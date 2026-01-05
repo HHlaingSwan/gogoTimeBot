@@ -1,6 +1,6 @@
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                     PROJECT STRUCTURE & LOGIC                        ║
-║                    For  Developers                                   ║
+║                    For Developers                                    ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 📁 telegram_bot/
@@ -16,13 +16,17 @@
 │   └── 📄 db.js                    (MongoDB connection)
 │
 ├── 📁 models/
-│   └── 📄 Task.js                  (Task/Reminder database schema)
+│   ├── 📄 Task.js                  (Task/Reminder database schema)
+│   ├── 📄 User.js                  (User settings with timezone)
+│   └── 📄 Holiday.js               (Myanmar holidays database schema)
 │
 ├── 📁 services/
-│   └── 📄 scheduler.js             (Background job - checks & sends reminders)
+│   ├── 📄 scheduler.js             (Background job - checks & sends reminders)
+│   └── 📄 holiday.js               (Fetch & sync Myanmar holidays)
 │
 ├── 📁 utils/
-│   └── 📄 timeParser.js            (Time & weekday parsing helpers)
+│   ├── 📄 timeParser.js            (Time & weekday parsing helpers)
+│   └── 📄 timezone.js              (Timezone list & utilities)
 │
 ├── 📁 routes/
 │   └── 📄 telegram.route.js        (Webhook endpoint for Telegram)
@@ -33,390 +37,85 @@
 
 
 ═══════════════════════════════════════════════════════════════════════
-                           CORE LOGIC FLOW
+                         SIMPLIFIED COMMANDS
 ═══════════════════════════════════════════════════════════════════════
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ 1. USER SENDS MESSAGE TO BOT                                        │
-│    (e.g., "/remind 9am Finish project")                             │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 2. TELEGRAM SENDS UPDATE TO WEBHOOK                                 │
-│    POST /api/telegram                                               │
-│    Body: { message: { chat: { id: 123 }, text: "/remind 9am..." } } │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 3. EXPRESS ROUTES REQUEST TO telegram.route.js                      │
-│    - Validates request                                              │
-│    - Calls bot.processUpdate(req.body)                              │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 4. BOT MATCHES COMMAND IN command.js                                │
-│    - Regex pattern: /\/remind (.+)/                                 │
-│    - Extracts: "9am Finish project"                                 │
-│    - Calls createReminderCommand("once")                            │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 5. PARSE INPUT (timeParser.js)                                      │
-│    - extractTimeFromMessage() → "9am"                               │
-│    - parseTime() → { hour: 9, minute: 0 }                           │
-│    - extractTaskFromMessage() → "Finish project"                    │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 6. SAVE TO DATABASE (Task.js)                                       │
-│    {                                                                │
-│      chatId: 123,                                                   │
-│      text: "Finish project",                                        │
-│      time: "9am",                                                   │
-│      hour: 9,                                                       │
-│      minute: 0,                                                     │
-│      type: "once",                                                  │
-│      active: true                                                   │
-│    }                                                                │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ 7. CONFIRM TO USER                                                  │
-│    "✅ One-time reminder set:\n📅 Time: 9am\n📝 Task: Finish project"│
-└─────────────────────────────────────────────────────────────────────┘
+Command Flow:
+  /remind 9am Task          → One-time reminder
+  /remind daily 7am Task    → Every day
+  /remind weekdays 9am Task → Mon-Fri only
+  /remind fri 9pm Task      → Every Friday
+  /today                    → Today's schedule + all tasks
+  /holidays                 → Myanmar holidays (all remaining)
+  /delete 1                 → Delete first reminder
+  /deleteall                → Delete ALL (with confirmation)
+  /timezone Malaysia        → Set timezone
+  /help                     → Show help
+
+Reply Keyboard:
+  [⏰ Remind] [📅 Today]
+  [🎉 Holiday] [⚙️ Settings]
 
 
 ═══════════════════════════════════════════════════════════════════════
-                    SCHEDULER LOGIC (Background Job)
+                            FILE DESCRIPTIONS
 ═══════════════════════════════════════════════════════════════════════
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ STARTUP: startScheduler() called in index.js                        │
-│   └─► setInterval() runs every 10 seconds                           │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-          ┌───────────────────┴───────────────────┐
-          ▼                                       ▼
-┌─────────────────────────┐       ┌─────────────────────────┐
-│ CHECK CURRENT TIME      │       │ FIND DUE TASKS          │
-│ - Get current hour      │       │ Task.find({             │
-│ - Get current minute    │   →   │   active: true,         │
-│ - Get current weekday   │       │   hour: now.hour,       │
-│                         │       │   minute: now.minute    │
-└─────────────────────────┘       │ })                      │
-                                  └─────────────────────────┘
-                                         │
-                                         ▼
-                              ┌─────────────────────────┐
-                              │ FILTER BY DAY TYPE      │
-                              │                         │
-                              │ if weekdays:            │
-                              │   skip weekends         │
-                              │                         │
-                              │ if specific day:        │
-                              │   match weekday         │
-                              │                         │
-                              │ if once/daily/weekly:   │
-                              │   send immediately      │
-                              └─────────────────────────┘
-                                         │
-                                         ▼
-                              ┌─────────────────────────┐
-                              │ SEND REMINDER           │
-                              │ bot.sendMessage(        │
-                              │   chatId,               │
-                              │   `⏰ Reminder: ${text}` │
-                              │ )                       │
-                              └─────────────────────────┘
-                                         │
-                                         ▼
-                              ┌─────────────────────────┐
-                              │ CLEANUP (if one-time)   │
-                              │ Task.findByIdAndUpdate( │
-                              │   _id,                  │
-                              │   { active: false }     │
-                              │ )                       │
-                              └─────────────────────────┘
-
-
-═══════════════════════════════════════════════════════════════════════
-                           FILE DESCRIPTIONS
-═══════════════════════════════════════════════════════════════════════
-
-📄 index.js
+📄 bot/command.js
 ───────────────────────────────────────────────────────────────────────
-Purpose: Server entry point
-What it does:
-  1. Imports all modules
-  2. Sets up Express middleware (CORS, JSON parser)
-  3. Mounts webhook route at /api/telegram
-  4. Registers bot commands
-  5. Starts HTTP server
-  6. Connects to MongoDB
-  7. Sets webhook URL (if provided)
-  8. Starts the scheduler
+Purpose: Handle all bot commands
+Key Functions:
+  - sendRemindGuide() - Shows /remind usage examples
+  - sendDeleteGuide() - Shows /delete usage
+  - parseRemindInput() - Smart parsing for all reminder types
+  - sendReplyKeyboard() - Shows keyboard menu
 
-Key lines:
-  - app.use("/api/telegram", telegramRouter)  ← webhook endpoint
-  - registerCommands()                        ← registers all /commands
-  - bot.setWebhook(WEBHOOK_URL)               ← tells Telegram where to send
-  - startScheduler()                          ← background job starts
-
-
-📄 bot/bot.js
-───────────────────────────────────────────────────────────────────────
-Purpose: Create and export Telegram bot instance
-What it does:
-  - Creates TelegramBot with token from .env
-  - Uses webhook mode (polling: false) for production
-  - Exports for use in other files
-
-Why webhook mode?
-  - Polling: Bot constantly asks Telegram "any new messages?"
-  - Webhook: Telegram pushes messages to your server
-  - Webhook is more efficient for production部署
-
-
-📄 bot/command.js (MOST IMPORTANT)
-───────────────────────────────────────────────────────────────────────
-Purpose: Handle all user commands
-Structure:
-  - createReminderCommand(type) → Factory function that creates
-    command handlers for /remind, /daily, /weekly, /weekdays, /every
-  - registerCommands() → Main function that registers all handlers
-
-Command flow for /remind 9am Finish project:
-  1. Regex matches: /\/remind (.+)/
-  2. input = "9am Finish project"
-  3. extractTimeFromMessage() → "9am"
-  4. parseTime() → { hour: 9, minute: 0 }
-  5. extractTaskFromMessage() → "Finish project"
-  6. Save Task to MongoDB
-  7. Send confirmation message
-
-Other commands:
-  - /today → Queries tasks for current day
-  - /next → Calculates time until next reminder
-  - /tasks → Lists all tasks
-  - /del 1 → Deletes first task from list
-
-
-📄 models/Task.js
-───────────────────────────────────────────────────────────────────────
-Purpose: Define Task schema for MongoDB
-Schema fields:
-  - chatId: Telegram chat ID (indexed for fast lookups)
-  - text: Task description
-  - time: Original time string ("9am")
-  - hour: Parsed hour (0-23)
-  - minute: Parsed minute (0-59)
-  - type: "once" | "daily" | "weekly" | "weekdays" | "specific"
-  - weekDay: 0-6 for specific day (0=Sun, 6=Sat)
-  - active: Is task currently active?
-  - createdAt: When task was created
-
-Indexes:
-  - { chatId: 1, active: 1 } → Fast lookup of active tasks per user
-  - { chatId: 1, weekDay: 1, hour: 1, minute: 1 } → Fast scheduler query
+Commands:
+  /remind - Set reminder (smart parsing)
+  /today - Today's schedule + all tasks
+  /holidays - Myanmar holidays (all remaining)
+  /delete <n> - Delete specific reminder
+  /deleteall - Delete all (confirmation)
+  /timezone - Show/set timezone
+  /help - Show help
 
 
 📄 services/scheduler.js
 ───────────────────────────────────────────────────────────────────────
-Purpose: Background job that checks and sends reminders
-How it works:
-  1. setInterval() runs every 10 seconds
-  2. Get current time (hour, minute, day)
-  3. Query MongoDB for tasks matching current time
-  4. Filter by day type:
-     - weekdays: skip Sat/Sun
-     - specific: match exact weekday
-     - weekly: match exact weekday (user-specified or creation day)
-  5. Send reminder message
-  6. If once type, mark task as inactive
-  7. Prevent duplicate sends with checkedTasks Set
-
-Why 10-second interval?
-  - Small enough to catch reminders quickly
-  - Not too resource-intensive
-  - 60-second window to prevent duplicates
+Purpose: Background job for reminders
+Features:
+  - Timezone conversion per user
+  - Quiet hours (12am-7am automatic)
+  - Holiday notifications at 9am
 
 
-📄 utils/timeParser.js
+📄 utils/timezone.js
 ───────────────────────────────────────────────────────────────────────
-Purpose: Helper functions for parsing time strings
-Functions:
-  - parseTime("9am") → { hour: 9, minute: 0 }
-  - parseTime("14:30") → { hour: 14, minute: 30 }
-  - parseTime("9:00pm") → { hour: 21, minute: 0 }
-  - extractTimeFromMessage("at 9am do X") → "9am"
-  - extractWeekday("every friday") → { day: 5, name: "friday" }
-  - getDayName(5) → "Friday" (proper capitalization)
-  - formatNextReminder(task, now) → Calculates countdown
-
-WEEKDAYS mapping (case-insensitive):
-  { sunday: 0, sun: 0, monday: 1, mon: 1, ..., saturday: 6, sat: 6 }
-
-Display always uses proper capitalization (Friday, Monday, etc.)
-
-
-📄 config/db.js
-───────────────────────────────────────────────────────────────────────
-Purpose: Connect to MongoDB
-What it does:
-  1. Uses mongoose.connect() with MONGODB_URI
-  2. Logs "MongoDB connected" on success
-  3. Exits process on error
-
-
-📄 config/env.js
-───────────────────────────────────────────────────────────────────────
-Purpose: Load environment variables from .env
-What it does:
-  1. Calls dotenv.config()
-  2. Exports TELEGRAM_BOT_TOKEN, PORT, MONGODB_URI, WEBHOOK_URL
-
-
-📄 routes/telegram.route.js
-───────────────────────────────────────────────────────────────────────
-Purpose: Webhook endpoint for Telegram
-What it does:
-  1. POST /api/telegram
-  2. Receives update from Telegram
-  3. Passes to bot.processUpdate(req.body)
-  4. Returns 200 OK
-
-Why this file exists:
-  - Express needs a route to receive HTTP requests
-  - Telegram sends POST requests to this endpoint
-  - bot.processUpdate() handles the actual message
+Purpose: Timezone utilities
+Short timezone names: Malaysia, Singapore, Thailand, Japan, etc.
 
 
 ═══════════════════════════════════════════════════════════════════════
-                       COMMON PATTERNS USED
-═══════════════════════════════════════════════════════════════════════
-
-1. FACTORY PATTERN (createReminderCommand)
-   ─────────────────────────────────────────
-   Instead of writing 5 similar functions, create one factory:
-   
-   function createReminderCommand(type) {
-     return async (msg, match) => {
-       // Same logic for all types
-       // Only type changes
-     };
-   }
-   
-   bot.onText(/\/remind (.+)/, createReminderCommand("once"));
-   bot.onText(/\/daily (.+)/, createReminderCommand("daily"));
-   // etc.
-
-
-2. MONGOOSE MODEL
-   ───────────────
-   Define schema → Create model → Export
-   
-   const schema = new mongoose.Schema({...});
-   export default mongoose.model("Task", schema);
-
-
-3. ASYNC/AWAIT
-   ────────────
-   Database operations are async:
-   
-   const task = await Task.findOne({...});  // Wait for DB
-   await task.save();                       // Wait for save
-   bot.sendMessage(...);                    // Wait for Telegram
-
-
-4. INDEXING
-   ─────────
-   Add indexes for frequently queried fields:
-   
-   taskSchema.index({ chatId: 1, active: 1 });
-   // Queries like "find active tasks for user 123" are fast
-
-
-5. NUMBER-BASED DELETION (/del)
-   ─────────────────────────────
-   Users delete by number, not by ID:
-   
-   /tasks shows:
-   1. 09:00 [Once] - Finish project
-   2. 14:30 [Mon] - Team meeting
-   
-   /del 1  → Deletes first task
-   /del 2  → Deletes second task
-
-   How it works:
-   1. Fetch all active tasks sorted by createdAt (newest first)
-   2. User provides number (1-based index)
-   3. Delete task at that index
-
-
-6. PREVENTING DUPLICATES
-   ──────────────────────
-   Use a Set with time-based keys:
-   
-   const checkedTasks = new Set();
-   // Before sending:
-   if (checkedTasks.has(taskKey)) continue;
-   checkedTasks.add(taskKey after 60 seconds);
-   // Cleanup
-
-
-═══════════════════════════════════════════════════════════════════════
-                         DEBUGGING TIPS
-═══════════════════════════════════════════════════════════════════════
-
-1. Bot not responding?
-   - Check Render logs: Webhook received?
-   - Verify WEBHOOK_URL is correct
-   - Test with curl:
-     curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo
-
-2. Reminders not sending?
-   - Check scheduler is running (logs show "Scheduler started")
-   - Verify task has active: true in MongoDB
-   - Check task time matches current time
-
-3. MongoDB errors?
-   - Verify MONGODB_URI is correct
-   - Check IP whitelist if using Atlas
-
-4. Webhook errors?
-   - URL must be HTTPS
-   - Server must be running and accessible
-   - Telegram needs 200 response
-
-
-═══════════════════════════════════════════════════════════════════════
-                         QUICK REFERENCE
+                          QUICK REFERENCE
 ═══════════════════════════════════════════════════════════════════════
 
 Commands:
   /remind 9am Task          → One-time reminder
-  /daily 9am Task           → Every day at 9am
-  /weekly fri 9pm Task      → Every Friday at 9pm
-  /weekdays 9am Task        → Mon-Fri at 9am
-  /every friday 3pm Task    → Specific day (same as /weekly)
-  /today                     → Today's reminders
-  /next                      → Time until next reminder
-  /tasks                     → List all reminders
-  /del 1                     → Delete first task
+  /remind daily 7am Task    → Every day
+  /remind weekdays 9am Task → Mon-Fri only
+  /remind fri 9pm Task      → Every Friday
+  /today                    → Today's schedule
+  /holidays                 → Myanmar holidays
+  /delete 1                 → Delete first task
+  /deleteall                → Delete all (confirm)
+  /timezone Malaysia        → Set timezone
+  /help                     → Show help
 
-Command Flow:
-  User → Telegram → Webhook → Express Route → bot.processUpdate() 
-  → command regex → handler → parse → save to DB → send confirmation
+Reply Keyboard:
+  [⏰ Remind] [📅 Today]
+  [🎉 Holiday] [⚙️ Settings]
 
-Scheduler Flow (every 10s):
-  → Query DB for tasks at current time → Filter by day type 
-  → Send reminder → Mark inactive (if one-time)
-
-
-═══════════════════════════════════════════════════════════════════════
+Timezone & Quiet Hours:
+  - /timezone <name> sets timezone
+  - Reminders use your local time
+  - Quiet hours: 12am-7am (automatic)

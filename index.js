@@ -5,6 +5,7 @@ import telegramRouter from "./routes/telegram.route.js";
 import connectDB from "./config/db.js";
 import { PORT, WEBHOOK_URL } from "./config/env.js";
 import { startScheduler } from "./services/scheduler.js";
+import { syncAllYears } from "./services/holiday.js";
 import bot from "./bot/bot.js";
 
 const app = express();
@@ -23,6 +24,7 @@ app.get("/", (req, res) => {
 app.listen(PORT, async () => {
   try {
     await connectDB();
+    await syncAllYears();
   } catch (error) {
     console.error("MongoDB error:", error.message);
     process.exit(1);
