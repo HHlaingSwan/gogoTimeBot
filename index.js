@@ -30,17 +30,13 @@ app.listen(PORT, async () => {
 
   if (WEBHOOK_URL) {
     try {
-      if (typeof bot.setWebhook === "function") {
-        await bot.setWebhook(WEBHOOK_URL);
-        console.log(`Webhook set to ${WEBHOOK_URL}`);
-      } else {
-        console.log("Webhook method not available - using polling");
-      }
+      await bot.setWebhook(WEBHOOK_URL);
+      console.log(`Webhook set to ${WEBHOOK_URL}`);
     } catch (error) {
-      console.error("Webhook error:", error.message);
+      console.error("Webhook setup failed:", error.message);
     }
   } else {
-    console.log("No WEBHOOK_URL set - webhook not configured");
+    console.log("ℹ️ WEBHOOK_URL not set — using polling mode");
   }
 
   startScheduler();

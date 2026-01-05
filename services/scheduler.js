@@ -8,6 +8,7 @@ export function startScheduler() {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
+    const currentDay = now.getDay();
     
     try {
       const tasks = await Task.find({ active: true, hour: currentHour, minute: currentMinute });
@@ -19,6 +20,18 @@ export function startScheduler() {
         checkedTasks.add(taskKey);
         
         setTimeout(() => checkedTasks.delete(taskKey), 60000);
+        
+        let shouldSend = true;
+        
+        if (task.type === "weekdays") {
+          if (currentDay === 0 || currentDay === 6) shouldSend = false;
+        } else if (task.type === "specific" && task.weekDay !== undefined) {
+          if (currentDay !== task.weekDay) shouldSend = false;
+        } else if (task.type === "weekly" && task.weekDay !== undefined) {
+          if (currentDay !== task.weekDay) shouldSend = false;
+        }
+        
+        if (!shouldSend) continue;
         
         try {
           await bot.sendMessage(task.chatId, `⏰ Reminder: ${task.text}`);
