@@ -8,7 +8,8 @@ A simple Telegram scheduler bot with reminders, timezone support, and Myanmar ho
 - **Today's Schedule** - `/today` shows all reminders
 - **Myanmar Holidays** - `/holidays` shows all remaining holidays
 - **Timezone Support** - `/timezone Malaysia`
-- **Quiet Hours** - No reminders between 12am-7am (automatic)
+- **Quiet Hours** - No reminders between 12:05am-6:30am (automatic)
+- **Holiday Notifications** - Get notified at 12:00am if today is a holiday
 
 ## Setup
 
@@ -76,7 +77,13 @@ PORT=3000
 
 ## Timezones
 
-Available: Malaysia, Singapore, Thailand, Japan, Korea, China, India, Hong Kong, Australia, UK, Europe, New York, LA, Dubai, UTC
+Available: Myanmar, Malaysia, Singapore, Thailand, Japan, Korea, China, India, Hong Kong, Australia, UK, Europe, New York, LA, Dubai, UTC
+
+**Default: Myanmar (Asia/Yangon)**
+
+**Quiet Hours: 12:05am-6:30am** (no reminders during this time)
+
+**Holiday Notifications: 12:00am** (get notified at midnight if today is a holiday)
 
 ## Tech Stack
 

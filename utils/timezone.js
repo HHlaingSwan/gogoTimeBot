@@ -1,4 +1,5 @@
 export const TIMEZONES = [
+  { label: "🇲🇲 Myanmar", value: "Asia/Yangon" },
   { label: "🇲🇾 Malaysia", value: "Asia/Kuala_Lumpur" },
   { label: "🇸🇬 Singapore", value: "Asia/Singapore" },
   { label: "🇹🇭 Thailand", value: "Asia/Bangkok" },
@@ -16,6 +17,16 @@ export const TIMEZONES = [
   { label: "🇦🇪 Dubai", value: "Asia/Dubai" },
   { label: "🌏 UTC", value: "UTC" }
 ];
+
+/*
+  Timezone List:
+  - Myanmar (Asia/Yangon) - DEFAULT
+  - Malaysia, Singapore, Thailand, Japan, Korea, China, India, Hong Kong
+  - Australia, New Zealand
+  - UK, Europe
+  - New York, LA
+  - Dubai, UTC
+*/
 
 export function formatTimezoneLabel(tz) {
   const found = TIMEZONES.find(t => t.value === tz);

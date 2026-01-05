@@ -14,8 +14,18 @@ function getUserLocalTime(timezone) {
   }
 }
 
-function isQuietHours(hour) {
-  return hour >= 0 && hour < 7;
+function isQuietHours(hour, minute) {
+  if (hour < 0 || hour > 23) return false;
+  if (hour === 0) {
+    return minute >= 5;
+  }
+  if (hour >= 1 && hour <= 6) {
+    return true;
+  }
+  if (hour === 6) {
+    return minute < 30;
+  }
+  return false;
 }
 
 async function sendHolidayNotifications() {
@@ -31,11 +41,13 @@ async function sendHolidayNotifications() {
 
   const users = await User.find({});
   for (const user of users) {
-    const localNow = getUserLocalTime(user.timezone || "UTC");
+    const localNow = getUserLocalTime(user.timezone || "Asia/Yangon");
     const localHour = localNow.getHours();
+    const localMinute = localNow.getMinutes();
 
-    if (localHour === 9) {
-      const message = `🎉 Today is a Holiday!\n\n${todayHolidays.map((h) => `🇲🇲 ${h.name}`).join("\n")}`;
+    if (localHour === 0 && localMinute === 0) {
+      const holidayList = todayHolidays.map((h) => `🎉 ${h.name}`).join("\n");
+      const message = `🌅 Good Morning!\n\n${holidayList}\n\nHave a wonderful day! 💫`;
       await bot.sendMessage(user.chatId, message);
       console.log(`Sent holiday notification to ${user.chatId}`);
     }
@@ -56,7 +68,7 @@ export function startScheduler() {
       
       for (const task of tasks) {
         const user = await User.findOne({ chatId: task.chatId });
-        const timezone = user?.timezone || "UTC";
+        const timezone = user?.timezone || "Asia/Yangon";
         
         const localNow = getUserLocalTime(timezone);
         const localHour = localNow.getHours();
@@ -69,7 +81,7 @@ export function startScheduler() {
         
         let shouldSend = true;
         
-        if (isQuietHours(localHour)) {
+        if (isQuietHours(localHour, localMinute)) {
           shouldSend = false;
         } else if (task.type === "weekdays") {
           if (localDay === 0 || localDay === 6) shouldSend = false;

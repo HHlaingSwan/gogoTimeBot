@@ -142,7 +142,8 @@ I help you schedule reminders.
 • \`/delete 1\` - Delete reminder
 • \`/timezone Malaysia\` - Set timezone
 
-💤 Quiet hours: 12am-7am`,
+💤 Quiet hours: 12:05am-6:30am
+🎉 Holiday notification: 12:00am`,
       { parse_mode: "Markdown" }
     );
   });
@@ -212,7 +213,7 @@ Use: \`/remind <time> <task>\`
   bot.onText(/\/today/, async (msg) => {
     const chatId = msg.chat.id;
     const user = await User.findOne({ chatId });
-    const timezone = user?.timezone || "UTC";
+    const timezone = user?.timezone || "Asia/Yangon";
 
     const now = getUserLocalTime(timezone);
     const currentDay = now.getDay();
@@ -290,7 +291,7 @@ Use: \`/remind <time> <task>\`
     }
 
     if (upcomingToday.length === 0 && passedToday.length === 0 && otherTasks.length === 0) {
-      response += "No reminders for today.";
+      response += "📭 No reminders for today.";
     }
 
     if (otherTasks.length > 0) {
@@ -334,7 +335,7 @@ Use: \`/remind <time> <task>\`
         return `${dateStr}  ${h.name}`;
       }).join("\n");
     } else {
-      response += "No more holidays this year.";
+      response += "📭 No more holidays this year.";
     }
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
@@ -366,7 +367,7 @@ Use /today to see all reminders with numbers.`,
     const activeTasks = await Task.find({ chatId, active: true }).sort({ createdAt: -1 });
 
     if (number > activeTasks.length) {
-      bot.sendMessage(chatId, `❌ Invalid number. You have ${activeTasks.length} reminders.`);
+      bot.sendMessage(chatId, `❌ Invalid number.\n\nYou have ${activeTasks.length} reminders.\n\nUse /today to see all reminders with numbers.`);
       return;
     }
 
@@ -381,7 +382,7 @@ Use /today to see all reminders with numbers.`,
     const count = await Task.countDocuments({ chatId, active: true });
 
     if (count === 0) {
-      bot.sendMessage(chatId, "No reminders to delete.");
+      bot.sendMessage(chatId, "📭 You have no reminders to delete.");
       return;
     }
 
@@ -417,15 +418,24 @@ This cannot be undone.`,
   bot.onText(/\/timezone$/, async (msg) => {
     const chatId = msg.chat.id;
     const user = await User.findOne({ chatId });
-    const currentTz = user?.timezone || "UTC";
+    const currentTz = user?.timezone || "Asia/Yangon";
 
-    let response = `🌐 *Your Timezone*\n`;
-    response += `${formatTimezoneLabel(currentTz)}\n\n`;
-    response += `*Available:*\n`;
-    response += getTimezonesList() + "\n\n";
-    response += `Use: \`/timezone Malaysia\``;
+    const keyboard = [
+      [{ text: "✅ Yes, change" }, { text: "❌ No, keep it" }],
+    ];
 
-    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+    bot.sendMessage(
+      chatId,
+      `🌐 *Your Timezone*
+
+${formatTimezoneLabel(currentTz)}
+
+Do you want to change it?`,
+      {
+        parse_mode: "Markdown",
+        reply_markup: { keyboard, resize_keyboard: true },
+      }
+    );
   });
 
   bot.onText(/\/timezone (.+)/, async (msg, match) => {
@@ -435,7 +445,7 @@ This cannot be undone.`,
     if (!isValidTimezone(tz)) {
       bot.sendMessage(
         chatId,
-        `❌ *Invalid timezone:* ${tz}\n\n*Available:*\n${getTimezonesList()}`,
+        `❌ *Timezone not found:* ${tz}\n\nType /settings to see all available timezones.`,
         { parse_mode: "Markdown" }
       );
       return;
@@ -449,7 +459,7 @@ This cannot be undone.`,
 
     bot.sendMessage(
       chatId,
-      `✅ Timezone: ${formatTimezoneLabel(tz)}\n\n💤 Quiet hours: 12am-7am`
+      `✅ Done! Timezone set to: ${formatTimezoneLabel(tz)}\n\n💤 Quiet hours: 12:05am-6:30am`
     );
   });
 
@@ -468,6 +478,7 @@ This cannot be undone.`,
 *View:*
 • \`/today\` - Today's schedule
 • \`/holidays\` - Myanmar holidays
+• Get holiday notification at 12:00am if today is a holiday
 
 *Manage:*
 • \`/delete 1\` - Delete first reminder
@@ -476,7 +487,7 @@ This cannot be undone.`,
 *Settings:*
 • \`/timezone Malaysia\` - Set timezone
 
-💤 Quiet hours: 12am-7am`,
+💤 Quiet hours: 12:05am-6:30am`,
       { parse_mode: "Markdown" }
     );
   });
@@ -492,7 +503,7 @@ This cannot be undone.`,
 • \`/timezone Malaysia\` - Set timezone
 • \`/help\` - Show help
 
-💤 Quiet hours: 12am-7am`,
+💤 Quiet hours: 12:05am-6:30am`,
       { parse_mode: "Markdown" }
     );
   });
@@ -504,7 +515,7 @@ This cannot be undone.`,
   bot.onText(/📅 Today/, (msg) => {
     const chatId = msg.chat.id;
     User.findOne({ chatId }).then((user) => {
-      const timezone = user?.timezone || "UTC";
+      const timezone = user?.timezone || "Asia/Yangon";
       const now = getUserLocalTime(timezone);
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
@@ -533,9 +544,9 @@ This cannot be undone.`,
           }).join("\n");
         }
 
-        if (upcoming.length === 0 && passed.length === 0) {
-          response += "No reminders.";
-        }
+      if (upcoming.length === 0 && passed.length === 0) {
+        response += "📭 No reminders.";
+      }
 
         bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
       });
@@ -560,17 +571,38 @@ This cannot be undone.`,
   bot.onText(/⚙️ Settings/, (msg) => {
     const chatId = msg.chat.id;
     User.findOne({ chatId }).then((user) => {
-      const currentTz = user?.timezone || "UTC";
+      const currentTz = user?.timezone || "Asia/Yangon";
 
-      let response = `⚙️ *Settings*\n\n`;
-      response += `🌐 *Timezone:* ${formatTimezoneLabel(currentTz)}\n\n`;
-      response += `*Commands:*\n`;
-      response += `• \`/timezone\` - Show timezone\n`;
-      response += `• \`/timezone Malaysia\` - Set timezone\n`;
-      response += `• \`/help\` - Show help\n\n`;
-      response += `💤 Quiet hours: 12am-7am`;
+      const keyboard = [
+        [{ text: "✅ Yes, change" }, { text: "❌ No, thanks" }],
+      ];
 
-      bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+      bot.sendMessage(
+        chatId,
+        `⚙️ *Settings*
+
+🌐 *Your Timezone:* ${formatTimezoneLabel(currentTz)}
+
+Do you want to change your timezone?`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: { keyboard, resize_keyboard: true },
+        }
+      );
     });
+  });
+
+  bot.onText(/✅ Yes, change/, (msg) => {
+    const chatId = msg.chat.id;
+    let response = `🌐 *Choose Timezone:*\n\n`;
+    response += getTimezonesList();
+    response += `\n\nType: \`/timezone <name>\``;
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
+
+  bot.onText(/❌ No, thanks/, (msg) => {
+    bot.sendMessage(msg.chat.id, "Okay, no changes made!");
+    sendReplyKeyboard(msg.chat.id);
   });
 };

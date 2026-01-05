@@ -92,7 +92,8 @@ Features:
 📄 utils/timezone.js
 ───────────────────────────────────────────────────────────────────────
 Purpose: Timezone utilities
-Short timezone names: Malaysia, Singapore, Thailand, Japan, etc.
+Short timezone names: Myanmar, Malaysia, Singapore, Thailand, Japan, etc.
+Default: Myanmar (Asia/Yangon)
 
 
 ═══════════════════════════════════════════════════════════════════════
@@ -117,5 +118,7 @@ Reply Keyboard:
 
 Timezone & Quiet Hours:
   - /timezone <name> sets timezone
+  - Default: Myanmar (Asia/Yangon)
   - Reminders use your local time
+  - Quiet hours: 12am-7am (automatic)
   - Quiet hours: 12am-7am (automatic)
