@@ -3,7 +3,7 @@ import cors from "cors";
 import { registerCommands } from "./bot/command.js";
 import telegramRouter from "./routes/telegram.route.js";
 import connectDB from "./config/db.js";
-import { PORT, TELEGRAM_BOT_TOKEN, WEBHOOK_URL } from "./config/env.js";
+import { PORT, WEBHOOK_URL } from "./config/env.js";
 import { startScheduler } from "./services/scheduler.js";
 import bot from "./bot/bot.js";
 
@@ -23,15 +23,22 @@ app.get("/", (req, res) => {
 app.listen(PORT, async () => {
   try {
     await connectDB();
-    console.log("MongoDB connected");
   } catch (error) {
     console.error("MongoDB error:", error.message);
     process.exit(1);
   }
 
   if (WEBHOOK_URL) {
-    await bot.setWebhook(WEBHOOK_URL);
-    console.log(`Webhook set to ${WEBHOOK_URL}`);
+    try {
+      if (typeof bot.setWebhook === "function") {
+        await bot.setWebhook(WEBHOOK_URL);
+        console.log(`Webhook set to ${WEBHOOK_URL}`);
+      } else {
+        console.log("Webhook method not available - using polling");
+      }
+    } catch (error) {
+      console.error("Webhook error:", error.message);
+    }
   } else {
     console.log("No WEBHOOK_URL set - webhook not configured");
   }
