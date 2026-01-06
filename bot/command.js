@@ -459,17 +459,20 @@ ${emoji} ${cleanName}
       const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
 
       let apiStatus = "";
+      let apiHealth = null;
 
       if (CALENDARIFIC_API_KEY) {
-        const healthy = await checkApiHealth();
-        apiStatus = healthy
-          ? "✅ Calendarific API: OK"
-          : "❌ Calendarific API: Failed";
+        apiHealth = await checkApiHealth();
+        if (apiHealth.healthy) {
+          apiStatus = "✅ Calendarific API OK";
+        } else {
+          apiStatus = `❌ ${apiHealth.message}`;
+        }
       } else {
-        apiStatus = "⚠️ No API key configured";
+        apiStatus = "⚠️ No API key";
       }
 
-      await syncCurrentYear();
+      const syncResult = await syncCurrentYear();
 
       const now = new Date();
       const { getHolidayCount, getUpcomingHolidays } = await import(
@@ -479,24 +482,57 @@ ${emoji} ${cleanName}
       const total = await getHolidayCount(now.getFullYear());
       const upcoming = await getUpcomingHolidays(now);
 
+      const inlineKeyboard = [
+        [{ text: "🎉 View Holidays", callback_data: "view_holidays" }],
+        [{ text: "🔄 Refresh", callback_data: "sync_holidays" }],
+      ];
+
+      if (syncResult.success) {
+        const addedCount = syncResult.holidays.length;
+        const emoji = addedCount > 0 ? "✅" : "ℹ️";
+        const title = addedCount > 0 ? "Holidays Synced!" : "Already Up to Date";
+        const addedText = addedCount > 0 ? `➕ ${addedCount} new` : "";
+
+        bot.editMessageText(
+          `${emoji} *${title}*\n\n${apiStatus} | ${total} holidays | ${upcoming.length} upcoming\n${addedText}`,
+          {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: inlineKeyboard },
+          }
+        );
+      } else {
+        const errorKeyboard = [
+          [{ text: "🔄 Try Again", callback_data: "sync_holidays" }],
+        ];
+        if (!CALENDARIFIC_API_KEY) {
+          errorKeyboard.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
+        }
+
+        bot.editMessageText(
+          `❌ *Sync Failed*\n\n${syncResult.error || apiStatus}`,
+          {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: errorKeyboard },
+          }
+        );
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
       bot.editMessageText(
-        `✅ *Holidays Synced!*
-
-${apiStatus}
-
-📅 ${now.getFullYear()} | ${total} holidays | ${upcoming.length} remaining`,
+        `❌ *Sync Failed*\n\nAn unexpected error occurred. Please try again.`,
         {
           chat_id: chatId,
           message_id: loadingMsg.message_id,
           parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+          },
         }
       );
-    } catch (error) {
-      console.error("Sync error:", error);
-      bot.editMessageText(`❌ Sync failed: ${error.message}`, {
-        chat_id: chatId,
-        message_id: loadingMsg.message_id,
-      });
     }
   });
 
@@ -517,17 +553,20 @@ ${apiStatus}
       const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
 
       let apiStatus = "";
+      let apiHealth = null;
 
       if (CALENDARIFIC_API_KEY) {
-        const healthy = await checkApiHealth();
-        apiStatus = healthy
-          ? "✅ Calendarific API: OK"
-          : "❌ Calendarific API: Failed";
+        apiHealth = await checkApiHealth();
+        if (apiHealth.healthy) {
+          apiStatus = "✅ Calendarific API OK";
+        } else {
+          apiStatus = `❌ ${apiHealth.message}`;
+        }
       } else {
-        apiStatus = "⚠️ No API key configured";
+        apiStatus = "⚠️ No API key";
       }
 
-      await syncCurrentYear();
+      const syncResult = await syncCurrentYear();
 
       const now = new Date();
       const { getHolidayCount, getUpcomingHolidays } = await import(
@@ -537,24 +576,173 @@ ${apiStatus}
       const total = await getHolidayCount(now.getFullYear());
       const upcoming = await getUpcomingHolidays(now);
 
+      const inlineKeyboard = [
+        [{ text: "🎉 View Holidays", callback_data: "view_holidays" }],
+        [{ text: "🔄 Refresh", callback_data: "sync_holidays" }],
+      ];
+
+      if (syncResult.success) {
+        const addedCount = syncResult.holidays.length;
+        const emoji = addedCount > 0 ? "✅" : "ℹ️";
+        const title = addedCount > 0 ? "Holidays Synced!" : "Already Up to Date";
+        const addedText = addedCount > 0 ? `➕ ${addedCount} new` : "";
+
+        bot.editMessageText(
+          `${emoji} *${title}*\n\n${apiStatus} | ${total} holidays | ${upcoming.length} upcoming\n${addedText}`,
+          {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: inlineKeyboard },
+          }
+        );
+      } else {
+        const errorKeyboard = [
+          [{ text: "🔄 Try Again", callback_data: "sync_holidays" }],
+        ];
+        if (!CALENDARIFIC_API_KEY) {
+          errorKeyboard.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
+        }
+
+        bot.editMessageText(
+          `❌ *Sync Failed*\n\n${syncResult.error || apiStatus}`,
+          {
+            chat_id: chatId,
+            message_id: loadingMsg.message_id,
+            parse_mode: "Markdown",
+            reply_markup: { inline_keyboard: errorKeyboard },
+          }
+        );
+      }
+    } catch (error) {
+      console.error("Sync error:", error);
       bot.editMessageText(
-        `✅ *Holidays Synced!*
-
-${apiStatus}
-
-📅 ${now.getFullYear()} | ${total} holidays | ${upcoming.length} remaining`,
+        `❌ *Sync Failed*\n\nAn unexpected error occurred. Please try again.`,
         {
           chat_id: chatId,
           message_id: loadingMsg.message_id,
           parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+          },
         }
       );
-    } catch (error) {
-      console.error("Sync error:", error);
-      bot.editMessageText(`❌ Sync failed: ${error.message}`, {
-        chat_id: chatId,
-        message_id: loadingMsg.message_id,
-      });
     }
+  });
+
+  bot.on("callback_query", async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const data = callbackQuery.data;
+
+    if (data === "sync_holidays") {
+      const loadingMsg = await bot.sendMessage(chatId, "🔄 Syncing...");
+      try {
+        const { syncCurrentYear, checkApiHealth } = await import(
+          "../services/holiday.js"
+        );
+        const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
+
+        let apiStatus = "";
+        if (CALENDARIFIC_API_KEY) {
+          const health = await checkApiHealth();
+          apiStatus = health.healthy ? "✅ API OK" : `❌ ${health.message}`;
+        } else {
+          apiStatus = "⚠️ No API key";
+        }
+
+        const result = await syncCurrentYear();
+        const now = new Date();
+        const { getHolidayCount, getUpcomingHolidays } = await import(
+          "../services/holiday.js"
+        );
+        const total = await getHolidayCount(now.getFullYear());
+        const upcoming = await getUpcomingHolidays(now);
+
+        const inlineKeyboard = [
+          [{ text: "🎉 View Holidays", callback_data: "view_holidays" }],
+          [{ text: "🔄 Refresh", callback_data: "sync_holidays" }],
+        ];
+
+        if (result.success) {
+          const added = result.holidays.length;
+          const emoji = added > 0 ? "✅" : "ℹ️";
+          const title = added > 0 ? "Synced!" : "Up to Date";
+          const addedText = added > 0 ? `➕ ${added} new` : "";
+
+          bot.editMessageText(
+            `${emoji} *${title}*\n\n${apiStatus} | ${total} | ${upcoming.length} upcoming\n${addedText}`,
+            {
+              chat_id: chatId,
+              message_id: loadingMsg.message_id,
+              parse_mode: "Markdown",
+              reply_markup: { inline_keyboard: inlineKeyboard },
+            }
+          );
+        } else {
+          const errKb = [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]];
+          if (!CALENDARIFIC_API_KEY) errKb.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
+
+          bot.editMessageText(
+            `❌ *Failed*\n\n${result.error || apiStatus}`,
+            {
+              chat_id: chatId,
+              message_id: loadingMsg.message_id,
+              parse_mode: "Markdown",
+              reply_markup: { inline_keyboard: errKb },
+            }
+          );
+        }
+      } catch (error) {
+        bot.editMessageText("❌ Error. Try again.", {
+          chat_id: chatId,
+          message_id: loadingMsg.message_id,
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+          },
+        });
+      }
+    } else if (data === "view_holidays") {
+      const now = new Date();
+      const { getUpcomingHolidays, getHolidayCount } = await import(
+        "../services/holiday.js"
+      );
+      const holidays = await getUpcomingHolidays(now);
+      const total = await getHolidayCount(now.getFullYear());
+
+      if (holidays.length > 0) {
+        const response = holidays
+          .map((h) => `${h.day.toString().padStart(2, " ")} ${getShortMonthName(h.month)} ${h.name}`)
+          .join("\n");
+        bot.sendMessage(
+          chatId,
+          `🎉 *Holidays*\n\n${response}`,
+          { parse_mode: "Markdown" }
+        );
+      } else {
+        bot.sendMessage(chatId, "ℹ️ No upcoming holidays.", {
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔄 Sync", callback_data: "sync_holidays" }]],
+          },
+        });
+      }
+    } else if (data === "api_guide") {
+      bot.sendMessage(
+        chatId,
+        `📖 *API Setup Guide*
+
+1. Get free API key at:
+   https://calendarific.com/signup
+
+2. Add to .env:
+   \`CALENDARIFIC_API_KEY=your_key\`
+
+3. Restart bot
+
+Need help? Contact @username`,
+        { parse_mode: "Markdown" }
+      );
+    }
+
+    bot.answerCallbackQuery(callbackQuery.id);
   });
 };

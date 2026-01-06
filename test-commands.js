@@ -74,13 +74,36 @@ function getMockAddDateGuide() {
 }
 
 function getMockSyncResponse() {
-  const now = new Date();
+  return `✅ *Synced!*
 
-  return `✅ *Holidays Synced!*
+✅ API OK | 15 holidays | 12 upcoming
+➕ 3 new
 
-⚠️ No API key configured
+[🎉 View Holidays] [🔄 Refresh]`;
+}
 
-📅 ${now.getFullYear()} | 0 holidays | 0 remaining`;
+function getMockSyncNoNewResponse() {
+  return `ℹ️ *Up to Date*
+
+✅ API OK | 15 holidays | 12 upcoming
+
+[🎉 View Holidays] [🔄 Refresh]`;
+}
+
+function getMockSyncFailedResponse() {
+  return `❌ *Failed*
+
+⚠️ No API key
+
+[📖 Setup Guide] [🔄 Try Again]`;
+}
+
+function getMockSyncErrorResponse() {
+  return `❌ *Failed*
+
+Request timed out. Please try again.
+
+[🔄 Try Again]`;
 }
 
 function getMockStartResponse() {
@@ -123,6 +146,18 @@ console.log(getMockTodayResponse());
 
 console.log("\n=== 🔄 Sync Holidays button ===");
 console.log(getMockSyncResponse());
+
+console.log("\n=== /syncholidays (success with new) ===");
+console.log(getMockSyncResponse());
+
+console.log("\n=== /syncholidays (no new holidays) ===");
+console.log(getMockSyncNoNewResponse());
+
+console.log("\n=== /syncholidays (no API key) ===");
+console.log(getMockSyncFailedResponse());
+
+console.log("\n=== /syncholidays (error) ===");
+console.log(getMockSyncErrorResponse());
 
 console.log("\n=== ❓ Help button ===");
 console.log(getMockHelpResponse());

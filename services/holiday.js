@@ -11,8 +11,7 @@ const CALENDARIFIC_BASE_URL = "https://calendarific.com/api/v2";
 
 async function fetchMyanmarHolidays(year) {
   if (!CALENDARIFIC_API_KEY) {
-    console.log("⚠️ No API key - using fallback holidays");
-    return fetchFallbackHolidays(year);
+    return { success: false, error: "API key not configured", holidays: [] };
   }
 
   try {
@@ -29,10 +28,6 @@ async function fetchMyanmarHolidays(year) {
     console.log(
       `Fetched ${holidays.length} holidays from Calendarific for ${year}`
     );
-
-    if (holidays.length === 0) {
-      return fetchFallbackHolidays(year);
-    }
 
     const savedHolidays = [];
 
@@ -67,17 +62,30 @@ async function fetchMyanmarHolidays(year) {
       }
     }
 
-    return savedHolidays;
+    return { success: true, error: null, holidays: savedHolidays };
   } catch (error) {
+    let errorMessage = "Failed to fetch holidays";
+    if (error.code === "ECONNABORTED") {
+      errorMessage = "Request timed out. Please try again.";
+    } else if (error.response) {
+      if (error.response.status === 401) {
+        errorMessage = "Invalid API key. Please check your configuration.";
+      } else if (error.response.status === 429) {
+        errorMessage = "Too many requests. Please try again later.";
+      } else if (error.response.status >= 500) {
+        errorMessage = "Calendarific server error. Please try again later.";
+      }
+    } else if (error.message.includes("Network Error")) {
+      errorMessage = "Network error. Please check your internet connection.";
+    }
     console.error("Calendarific error:", error.message);
-    console.log("Using fallback holidays...");
-    return fetchFallbackHolidays(year);
+    return { success: false, error: errorMessage, holidays: [] };
   }
 }
 
 export async function checkApiHealth() {
   if (!CALENDARIFIC_API_KEY) {
-    return false;
+    return { healthy: false, message: "API key not configured" };
   }
 
   try {
@@ -89,76 +97,35 @@ export async function checkApiHealth() {
       },
       timeout: 10000,
     });
-    return response.data.response?.holidays !== undefined;
+    return { healthy: true, message: "API is working" };
   } catch (error) {
-    console.error("API health check failed:", error.message);
-    return false;
-  }
-}
-
-async function fetchFallbackHolidays(year) {
-  const holidays = BUDDHIST_HOLIDAYS[year] || [];
-
-  if (holidays.length === 0) {
-    console.log(`No fallback for ${year}`);
-    return [];
-  }
-
-  console.log(`Loading ${holidays.length} fallback holidays for ${year}`);
-
-  const savedHolidays = [];
-
-  for (const h of holidays) {
-    const holidayData = {
-      name: h.name,
-      localName: h.localName || "",
-      date: `${year}-${h.month.toString().padStart(2, "0")}-${h.day
-        .toString()
-        .padStart(2, "0")}`,
-      month: h.month,
-      day: h.day,
-      year: year,
-      type: "public",
-      country: "MM",
-      primary: true,
-      canonicalUrl: "",
-      fallback: true,
-    };
-
-    const existing = await Holiday.findOne({
-      name: h.name,
-      year: year,
-      month: h.month,
-      day: h.day,
-      country: "MM",
-    });
-
-    if (!existing) {
-      const saved = await Holiday.create(holidayData);
-      savedHolidays.push(saved);
+    let message = "API check failed";
+    if (error.response?.status === 401) {
+      message = "Invalid API key";
+    } else if (error.code === "ECONNABORTED") {
+      message = "Request timed out";
+    } else if (error.message.includes("Network Error")) {
+      message = "Network error";
     }
+    console.error("API health check failed:", error.message);
+    return { healthy: false, message };
   }
-
-  return savedHolidays;
 }
 
 export async function syncYear(year) {
   const existingCount = await Holiday.countDocuments({ year, country: "MM" });
-  
-  if (existingCount > 0) {
-    console.log(`${existingCount} holidays already exist for ${year}`);
-  }
-  
-  const saved = await fetchMyanmarHolidays(year);
-  console.log(`Synced ${year}: ${saved.length} new holidays added`);
+  console.log(`${existingCount} holidays already exist for ${year}`);
 
-  return saved;
+  const result = await fetchMyanmarHolidays(year);
+  console.log(`Synced ${year}: ${result.holidays.length} new holidays added`);
+
+  return { ...result, existingCount };
 }
 
 export async function syncCurrentYear() {
   const currentYear = new Date().getFullYear();
   console.log(`Syncing ${currentYear}...`);
-  await syncYear(currentYear);
+  return await syncYear(currentYear);
 }
 
 export async function syncCurrentAndNextYear() {
@@ -167,10 +134,16 @@ export async function syncCurrentAndNextYear() {
 
   console.log(`Syncing ${currentYear} and ${nextYear}...`);
 
-  await syncYear(currentYear);
-  await syncYear(nextYear);
+  const currentResult = await syncYear(currentYear);
+  const nextResult = await syncYear(nextYear);
 
   console.log("Sync completed");
+
+  return {
+    success: currentResult.success && nextResult.success,
+    error: currentResult.error || nextResult.error,
+    totalAdded: currentResult.holidays.length + nextResult.holidays.length,
+  };
 }
 
 export async function syncAllYears() {
