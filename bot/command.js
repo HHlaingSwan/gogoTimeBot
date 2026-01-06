@@ -314,130 +314,247 @@ ${emoji} ${cleanName}
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
   });
 
-  function handleTodayCommand(chatId) {
-    return async (msg) => {
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentDay = now.getDate();
-      const currentYear = now.getFullYear();
-      const weekday = WEEKDAY_NAMES[now.getDay()];
+  bot.onText(/\/today/, async (msg) => {
+    const chatId = msg.chat.id;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    const currentYear = now.getFullYear();
+    const weekday = WEEKDAY_NAMES[now.getDay()];
 
-      const todayHolidays = await getHolidaysForDate(
-        currentMonth,
-        currentDay,
-        currentYear
-      );
-      const todayPersonalDates = await PersonalDate.find({
-        chatId,
-        month: currentMonth,
-        day: currentDay,
+    const todayHolidays = await getHolidaysForDate(
+      currentMonth,
+      currentDay,
+      currentYear
+    );
+    const todayPersonalDates = await PersonalDate.find({
+      chatId,
+      month: currentMonth,
+      day: currentDay,
+    });
+    const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
+    const allPersonalDates = await PersonalDate.find({ chatId }).sort({
+      month: 1,
+      day: 1,
+    });
+
+    const moonPhase = getMoonPhase(now);
+
+    const personalDatesWithCountdown = allPersonalDates
+      .map((d) => {
+        const daysUntil = getDaysUntil(d.month, d.day, now);
+        let ageInfo = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageInfo = ` (Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear) {
+          ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
+        }
+        return {
+          ...d.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil),
+          monthDay: `${d.month}-${d.day}`,
+          ageInfo,
+        };
+      })
+      .sort((a, b) => a.daysUntil - b.daysUntil);
+
+    const monthHolidaysWithCountdown = monthHolidays
+      .filter((h) => {
+        if (currentMonth > now.getMonth() + 1) return true;
+        return h.day >= currentDay;
+      })
+      .map((h) => {
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        return {
+          ...h.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil),
+        };
       });
-      const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
-      const allPersonalDates = await PersonalDate.find({ chatId }).sort({
-        month: 1,
-        day: 1,
-      });
 
-      const moonPhase = getMoonPhase(now);
-
-      const personalDatesWithCountdown = allPersonalDates
-        .map((d) => {
-          const daysUntil = getDaysUntil(d.month, d.day, now);
-          let ageInfo = "";
-          if (d.type === "birthday" && d.birthYear) {
-            ageInfo = ` (Age ${currentYear - d.birthYear})`;
-          } else if (d.birthYear) {
-            ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
-          }
-          return {
-            ...d.toObject(),
-            daysUntil,
-            countdown: formatCountdown(daysUntil),
-            monthDay: `${d.month}-${d.day}`,
-            ageInfo,
-          };
-        })
-        .sort((a, b) => a.daysUntil - b.daysUntil);
-
-      const monthHolidaysWithCountdown = monthHolidays
-        .filter((h) => {
-          if (currentMonth > now.getMonth() + 1) return true;
-          return h.day >= currentDay;
-        })
-        .map((h) => {
-          const daysUntil = getDaysUntil(h.month, h.day, now);
-          return {
-            ...h.toObject(),
-            daysUntil,
-            countdown: formatCountdown(daysUntil),
-          };
-        });
-
-      let response = `📅 *Today* - ${weekday}, ${getMonthName(
-        currentMonth
-      )} ${currentDay}, ${currentYear}
+    let response = `📅 *Today* - ${weekday}, ${getMonthName(
+      currentMonth
+    )} ${currentDay}, ${currentYear}
 
 🌙 Moon: ${moonPhase.emoji} ${moonPhase.name}
 
 `;
 
-      if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
-        response += `*🎉 Today:*\n`;
-        todayHolidays.forEach((h) => {
-          response += `  🇲🇲 ${h.name}\n`;
-        });
-        todayPersonalDates.forEach((d) => {
-          let ageStr = "";
-          if (d.type === "birthday" && d.birthYear) {
-            ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
-          } else if (d.birthYear && d.type === "anniversary") {
-            ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
-          }
-          response += `  ${d.emoji} ${d.name}${ageStr}\n`;
-        });
-        response += "\n";
-      }
+    if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
+      response += `*🎉 Today:*\n`;
+      todayHolidays.forEach((h) => {
+        response += `  🇲🇲 ${h.name}\n`;
+      });
+      todayPersonalDates.forEach((d) => {
+        let ageStr = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear && d.type === "anniversary") {
+          ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
+        }
+        response += `  ${d.emoji} ${d.name}${ageStr}\n`;
+      });
+      response += "\n";
+    }
 
-      if (monthHolidaysWithCountdown.length > 0) {
-        response += `*📆 This Month Holidays:*\n`;
-        response += monthHolidaysWithCountdown
-          .map((h) => {
-            const weekday = getWeekdayName(h.month, h.day);
-            return `  ${h.day.toString().padStart(2, " ")} ${getShortMonthName(
-              h.month
-            )} (${weekday}) ${h.name.padEnd(18)} ${h.countdown}`;
-          })
-          .join("\n");
-        response += "\n\n";
-      } else {
-        response += "\n";
-      }
+    if (monthHolidaysWithCountdown.length > 0) {
+      response += `*📆 This Month Holidays:*\n`;
+      response += monthHolidaysWithCountdown
+        .map((h) => {
+          const weekday = getWeekdayName(h.month, h.day);
+          return `  ${h.day.toString().padStart(2, " ")} ${getShortMonthName(
+            h.month
+          )} (${weekday}) ${h.name.padEnd(18)} ${h.countdown}`;
+        })
+        .join("\n");
+      response += "\n\n";
+    } else {
+      response += "\n";
+    }
 
-      if (personalDatesWithCountdown.length > 0) {
-        response += `*📌 Your Dates:*\n`;
-        response += personalDatesWithCountdown
-          .map((d, i) => {
-            const num = (i + 1).toString().padStart(2, " ");
-            return `  ${num} ${d.emoji} ${d.name} (${d.monthDay})${d.ageInfo} - ${d.countdown}`;
-          })
-          .join("\n");
-      }
+    if (personalDatesWithCountdown.length > 0) {
+      response += `*📌 Your Dates:*\n`;
+      response += personalDatesWithCountdown
+        .map((d, i) => {
+          const num = (i + 1).toString().padStart(2, " ");
+          return `  ${num} ${d.emoji} ${d.name} (${d.monthDay})${d.ageInfo} - ${d.countdown}`;
+        })
+        .join("\n");
+    }
 
-      if (
-        todayHolidays.length === 0 &&
-        todayPersonalDates.length === 0 &&
-        monthHolidaysWithCountdown.length === 0 &&
-        personalDatesWithCountdown.length === 0
-      ) {
-        response += "No events. Use /adddate to add a date!";
-      }
+    if (
+      todayHolidays.length === 0 &&
+      todayPersonalDates.length === 0 &&
+      monthHolidaysWithCountdown.length === 0 &&
+      personalDatesWithCountdown.length === 0
+    ) {
+      response += "No events. Use /adddate to add a date!";
+    }
 
-      bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
-    };
-  }
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
 
-  bot.onText(/\/today/, handleTodayCommand);
-  bot.onText(/📅 Today/, handleTodayCommand);
+  bot.onText(/📅 Today/, async (msg) => {
+    const chatId = msg.chat.id;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    const currentYear = now.getFullYear();
+    const weekday = WEEKDAY_NAMES[now.getDay()];
+
+    const todayHolidays = await getHolidaysForDate(
+      currentMonth,
+      currentDay,
+      currentYear
+    );
+    const todayPersonalDates = await PersonalDate.find({
+      chatId,
+      month: currentMonth,
+      day: currentDay,
+    });
+    const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
+    const allPersonalDates = await PersonalDate.find({ chatId }).sort({
+      month: 1,
+      day: 1,
+    });
+
+    const moonPhase = getMoonPhase(now);
+
+    const personalDatesWithCountdown = allPersonalDates
+      .map((d) => {
+        const daysUntil = getDaysUntil(d.month, d.day, now);
+        let ageInfo = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageInfo = ` (Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear) {
+          ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
+        }
+        return {
+          ...d.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil),
+          monthDay: `${d.month}-${d.day}`,
+          ageInfo,
+        };
+      })
+      .sort((a, b) => a.daysUntil - b.daysUntil);
+
+    const monthHolidaysWithCountdown = monthHolidays
+      .filter((h) => {
+        if (currentMonth > now.getMonth() + 1) return true;
+        return h.day >= currentDay;
+      })
+      .map((h) => {
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        return {
+          ...h.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil),
+        };
+      });
+
+    let response = `📅 *Today* - ${weekday}, ${getMonthName(
+      currentMonth
+    )} ${currentDay}, ${currentYear}
+
+🌙 Moon: ${moonPhase.emoji} ${moonPhase.name}
+
+`;
+
+    if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
+      response += `*🎉 Today:*\n`;
+      todayHolidays.forEach((h) => {
+        response += `  🇲🇲 ${h.name}\n`;
+      });
+      todayPersonalDates.forEach((d) => {
+        let ageStr = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear && d.type === "anniversary") {
+          ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
+        }
+        response += `  ${d.emoji} ${d.name}${ageStr}\n`;
+      });
+      response += "\n";
+    }
+
+    if (monthHolidaysWithCountdown.length > 0) {
+      response += `*📆 This Month Holidays:*\n`;
+      response += monthHolidaysWithCountdown
+        .map((h) => {
+          const weekday = getWeekdayName(h.month, h.day);
+          return `  ${h.day.toString().padStart(2, " ")} ${getShortMonthName(
+            h.month
+          )} (${weekday}) ${h.name.padEnd(18)} ${h.countdown}`;
+        })
+        .join("\n");
+      response += "\n\n";
+    } else {
+      response += "\n";
+    }
+
+    if (personalDatesWithCountdown.length > 0) {
+      response += `*📌 Your Dates:*\n`;
+      response += personalDatesWithCountdown
+        .map((d, i) => {
+          const num = (i + 1).toString().padStart(2, " ");
+          return `  ${num} ${d.emoji} ${d.name} (${d.monthDay})${d.ageInfo} - ${d.countdown}`;
+        })
+        .join("\n");
+    }
+
+    if (
+      todayHolidays.length === 0 &&
+      todayPersonalDates.length === 0 &&
+      monthHolidaysWithCountdown.length === 0 &&
+      personalDatesWithCountdown.length === 0
+    ) {
+      response += "No events. Use /adddate to add a date!";
+    }
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
 
   bot.onText(/➕ Add Date/, (msg) => {
     sendAddDateGuide(msg.chat.id);
@@ -503,20 +620,15 @@ ${emoji} ${cleanName}
           }
         );
       } else {
-        const errorKeyboard = [
-          [{ text: "🔄 Try Again", callback_data: "sync_holidays" }],
-        ];
-        if (!CALENDARIFIC_API_KEY) {
-          errorKeyboard.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
-        }
-
         bot.editMessageText(
           `❌ *Sync Failed*\n\n${syncResult.error || apiStatus}`,
           {
             chat_id: chatId,
             message_id: loadingMsg.message_id,
             parse_mode: "Markdown",
-            reply_markup: { inline_keyboard: errorKeyboard },
+            reply_markup: {
+              inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+            },
           }
         );
       }
@@ -679,16 +791,15 @@ ${emoji} ${cleanName}
             }
           );
         } else {
-          const errKb = [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]];
-          if (!CALENDARIFIC_API_KEY) errKb.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
-
           bot.editMessageText(
             `❌ *Failed*\n\n${result.error || apiStatus}`,
             {
               chat_id: chatId,
               message_id: loadingMsg.message_id,
               parse_mode: "Markdown",
-              reply_markup: { inline_keyboard: errKb },
+              reply_markup: {
+                inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+              },
             }
           );
         }
@@ -725,22 +836,6 @@ ${emoji} ${cleanName}
           },
         });
       }
-    } else if (data === "api_guide") {
-      bot.sendMessage(
-        chatId,
-        `📖 *API Setup Guide*
-
-1. Get free API key at:
-   https://calendarific.com/signup
-
-2. Add to .env:
-   \`CALENDARIFIC_API_KEY=your_key\`
-
-3. Restart bot
-
-Need help? Contact @username`,
-        { parse_mode: "Markdown" }
-      );
     }
 
     bot.answerCallbackQuery(callbackQuery.id);

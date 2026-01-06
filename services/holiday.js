@@ -24,7 +24,7 @@ async function fetchMyanmarHolidays(year) {
       timeout: 30000,
     });
 
-    const holidays = response.data.response?.holidays || [];
+    const holidays = response.response?.holidays || [];
     console.log(
       `Fetched ${holidays.length} holidays from Calendarific for ${year}`
     );
