@@ -8,8 +8,6 @@ A Telegram bot for tracking Myanmar holidays and personal dates with countdowns,
 - **Personal Dates** - Birthdays, anniversaries with age display
 - **Moon Phases** - Shows current moon phase
 - **Countdowns** - Days until next event
-- **Auto Sync** - Updates holidays on the 1st of each month
-- **Fallback Holidays** - Hardcoded Buddhist holidays if API fails
 
 ## Commands
 
@@ -21,7 +19,6 @@ A Telegram bot for tracking Myanmar holidays and personal dates with countdowns,
 | `/adddate 12-25 1990 Name` | Add with birth year (shows age) |
 | `/deletedate 1` | Delete by number from `/today` |
 | `/syncholidays` | Force sync holidays from API |
-| `/myanmar` | Check API status |
 | `/help` | Show help |
 
 ## Setup
@@ -71,16 +68,6 @@ npm run dev
 └── routes/
     └── telegram.route.js   # Webhook route
 ```
-
-## Fallback Holidays
-
-If Calendarific API fails, the bot uses hardcoded Myanmar holidays:
-- New Year's Day
-- Karen New Year Day
-- Union Day
-- Thingyan / Burmese New Year
-- Full Moon days (Taboung, Kason, Waso, Thadingyut, Tazaungmone)
-- Christmas
 
 ## Deployment
 

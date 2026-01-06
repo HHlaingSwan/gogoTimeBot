@@ -107,20 +107,27 @@ export function parseDateInput(input) {
   const patterns = [
     /^(\d{1,2})[-/](\d{1,2})$/,
     /^(\d{1,2})\s+(\d{1,2})$/,
-    /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/
+    /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/,
+    /^(\d{1,2})[-/](\d{1,2})[-\s/](\d{4})$/
   ];
 
   for (const pattern of patterns) {
     const match = lower.match(pattern);
     if (match) {
-      if (match.length === 3) {
-        const month = parseInt(match[1]);
-        const day = parseInt(match[2]);
-        if (isValidDate(month, day)) return { month, day };
-      } else if (match.length === 4) {
-        const month = parseInt(match[2]);
-        const day = parseInt(match[3]);
-        if (isValidDate(month, day)) return { month, day };
+        if (pattern.source.includes('s')) { // MM-DD YYYY
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            const year = parseInt(match[3]);
+            if (isValidDate(month, day)) return { month, day, year };
+        } else if (match.length === 3) { // MM-DD
+            const month = parseInt(match[1]);
+            const day = parseInt(match[2]);
+            if (isValidDate(month, day)) return { month, day };
+        } else if (match.length === 4) { // YYYY-MM-DD
+            const year = parseInt(match[1]);
+            const month = parseInt(match[2]);
+            const day = parseInt(match[3]);
+            if (isValidDate(month, day)) return { month, day, year };
       }
     }
   }
@@ -131,22 +138,6 @@ export function parseDateInput(input) {
   }
 
   return null;
-}
-
-export function getCalendarDays(month, year) {
-  const firstDay = new Date(year, month - 1, 1).getDay();
-  const daysInMonth = getDaysInMonth(month, year);
-  const days = [];
-
-  for (let i = 0; i < firstDay; i++) {
-    days.push({ day: null, empty: true });
-  }
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    days.push({ day: d, empty: false });
-  }
-
-  return days;
 }
 
 const MOON_PHASES = [

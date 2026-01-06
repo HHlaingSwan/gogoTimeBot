@@ -24,7 +24,7 @@ async function fetchMyanmarHolidays(year) {
       timeout: 30000,
     });
 
-    const holidays = response.response?.holidays || [];
+    const holidays = response.data.response?.holidays || [];
     console.log(
       `Fetched ${holidays.length} holidays from Calendarific for ${year}`
     );
@@ -78,7 +78,7 @@ async function fetchMyanmarHolidays(year) {
     } else if (error.message.includes("Network Error")) {
       errorMessage = "Network error. Please check your internet connection.";
     }
-    console.error("Calendarific error:", error.message);
+    console.error("Calendarific error:", error);
     return { success: false, error: errorMessage, holidays: [] };
   }
 }
