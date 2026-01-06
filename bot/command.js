@@ -1,129 +1,83 @@
 import bot from "./bot.js";
-import Task from "../models/Task.js";
-import User from "../models/User.js";
 import Holiday from "../models/Holiday.js";
+import PersonalDate from "../models/PersonalDate.js";
 import {
-  parseTime,
-  extractTimeFromMessage,
-  extractWeekday,
-  WEEKDAY_NAMES,
-  getDayName,
-} from "../utils/timeParser.js";
-import {
-  TIMEZONES,
-  formatTimezoneLabel,
-  isValidTimezone,
-  getTimezonesList,
-} from "../utils/timezone.js";
+  getDaysUntil,
+  formatCountdown,
+  getMonthName,
+  getShortMonthName,
+  getWeekdayName,
+  isValidDate,
+  getMoonPhase,
+  formatAge,
+  formatYearsTogether
+} from "../utils/countdown.js";
 import {
   getUpcomingHolidays,
-  getTodayHolidays,
+  getHolidaysByMonth,
+  getHolidaysForDate,
+  getHolidayCount
 } from "../services/holiday.js";
 
-function getUserLocalTime(timezone) {
-  try {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
-  } catch (e) {
-    return new Date();
-  }
-}
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function sendReplyKeyboard(chatId) {
   const keyboard = [
-    [{ text: "⏰ Remind" }, { text: "📅 Today" }],
-    [{ text: "🎉 Holiday" }, { text: "⚙️ Settings" }],
+    [{ text: "📅 Today" }, { text: "🎉 Holidays" }],
+    [{ text: "➕ Add Date" }, { text: "🗑️ Delete Date" }],
   ];
   bot.sendMessage(chatId, "Choose an option:", {
     reply_markup: { keyboard, resize_keyboard: true },
   });
 }
 
-function sendRemindGuide(chatId) {
+function sendHelpGuide(chatId) {
+    bot.sendMessage(
+      chatId,
+      `📖 *Help*
+
+*Main:*
+• \`/today\` - Today, holidays, your dates with age
+• \`/holidays\` - All holidays this year
+• \`/syncholidays\` - Force sync holidays
+
+*Dates:*
+• \`/adddate 12-25 Name\` - Add date
+• \`/adddate 12-25 1990 Name\` - Add with birth year for age
+• \`/deletedate 1\` - Delete by number
+
+*Note:* Numbers in /today are for /deletedate`,
+      { parse_mode: "Markdown" }
+    );
+}
+
+function sendAddDateGuide(chatId) {
   bot.sendMessage(
     chatId,
-    `📝 *Set a Reminder*
+    `➕ *Add Personal Date*
 
-Format: \`/remind <time> <task>\`
+*Simple:*
+\`/adddate 12-25 Christmas\`
 
-*Examples:*
-• \`/remind 9am Meeting\`
-• \`/remind daily 7am Exercise\`
-• \`/remind weekdays 9am Standup\`
-• \`/remind friday 9am Weekly review\`
+*With birth year (for age):*
+\`/adddate 12-25 1990 My Birthday\`
 
-*Alternative:*
-• \`/remind mon 3pm Meeting\``,
+*With anniversary year:*
+\`/adddate 08-20 2020 Anniversary\``,
     { parse_mode: "Markdown" }
   );
 }
 
-function sendDeleteGuide(chatId) {
+function sendDeleteDateGuide(chatId) {
   bot.sendMessage(
     chatId,
-    `🗑️ *Delete Reminders*
+    `🗑️ *Delete Date*
 
-*Commands:*
-• \`/delete 1\` - Delete first reminder
-• \`/delete 2\` - Delete second reminder
-• \`/deleteall\` - Delete ALL reminders (confirm required)
+Use the number from \`/today\` command.
 
-*Use /today to see all reminders with numbers.*`,
+Example: \`/deletedate 1\``,
     { parse_mode: "Markdown" }
   );
-}
-
-function parseRemindInput(input) {
-  const lower = input.toLowerCase().trim();
-
-  let type = "once";
-  let timeInput = input;
-
-  if (lower.startsWith("daily ") || lower.startsWith("every day ")) {
-    type = "daily";
-    timeInput = input.replace(/^(daily|every day)\s*/i, "").trim();
-  } else if (lower.startsWith("weekdays ")) {
-    type = "weekdays";
-    timeInput = input.replace(/^weekdays\s*/i, "").trim();
-  } else {
-    const weekdayInfo = extractWeekday(input);
-    if (weekdayInfo) {
-      type = "weekly";
-      const timeStr = extractTimeFromMessage(input);
-      if (timeStr) {
-        timeInput = timeStr;
-      }
-    }
-  }
-
-  const timeStr = extractTimeFromMessage(timeInput);
-  if (!timeStr) return null;
-
-  const parsed = parseTime(timeStr);
-  if (!parsed) return null;
-
-  let cleaned = timeInput;
-  if (timeStr) {
-    const timeRegex = new RegExp(timeStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    cleaned = cleaned.replace(timeRegex, "");
-  }
-
-  const weekdayInfo = extractWeekday(input);
-  if (weekdayInfo) {
-    const dayRegex = new RegExp(weekdayInfo.name, "i");
-    cleaned = cleaned.replace(dayRegex, "");
-  }
-
-  const task = cleaned.replace(/^[:\s]+|[:\s]+$/g, "").trim();
-  if (!task) return null;
-
-  return {
-    type,
-    time: timeStr,
-    hour: parsed.hour,
-    minute: parsed.minute,
-    text: task,
-    weekDay: weekdayInfo?.day,
-  };
 }
 
 export const registerCommands = () => {
@@ -131,478 +85,497 @@ export const registerCommands = () => {
     sendReplyKeyboard(msg.chat.id);
     bot.sendMessage(
       msg.chat.id,
-      `👋 *Welcome to GoGoTime!*
+      `👋 *Welcome!*
 
-I help you schedule reminders.
+Track holidays, birthdays & events with countdowns and age.
 
 *Commands:*
-• \`/remind 9am Task\` - Set reminder
-• \`/today\` - View schedule
-• \`/holidays\` - Myanmar holidays
-• \`/delete 1\` - Delete reminder
-• \`/timezone Malaysia\` - Set timezone
+• \`/today\` - Everything including age
+• \`/holidays\` - All holidays this year
+• \`/adddate 12-25 1990 Name\` - Add with age
+• \`/deletedate 1\` - Delete date
 
-💤 Quiet hours: 12:05am-6:30am
-🎉 Holiday notification: 12:00am`,
+Type \`/help\` for more.`,
       { parse_mode: "Markdown" }
-    );
-  });
-
-  bot.onText(/\/remind$/, (msg) => {
-    sendRemindGuide(msg.chat.id);
-  });
-
-  bot.onText(/\/remind (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const input = match[1].trim();
-
-    if (!input) {
-      sendRemindGuide(chatId);
-      return;
-    }
-
-    const parsed = parseRemindInput(input);
-
-    if (!parsed) {
-      bot.sendMessage(
-        chatId,
-        `❌ *Invalid format*
-
-Use: \`/remind <time> <task>\`
-
-*Examples:*
-• \`/remind 9am Meeting\`
-• \`/remind daily 7am Exercise\`
-• \`/remind friday 9am Review\``,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    const taskData = {
-      chatId,
-      text: parsed.text,
-      time: parsed.time,
-      hour: parsed.hour,
-      minute: parsed.minute,
-      type: parsed.type,
-    };
-
-    if (parsed.type === "weekly" && parsed.weekDay !== undefined) {
-      taskData.weekDay = parsed.weekDay;
-    }
-
-    await Task.create(taskData);
-
-    let typeLabel = "";
-    if (parsed.type === "once") typeLabel = "One-time";
-    else if (parsed.type === "daily") typeLabel = "Daily";
-    else if (parsed.type === "weekdays") typeLabel = "Weekdays (Mon-Fri)";
-    else if (parsed.type === "weekly") typeLabel = `Weekly (${getDayName(parsed.weekDay)})`;
-
-    bot.sendMessage(
-      chatId,
-      `✅ *${typeLabel} reminder set!*
-
-📅 ${parsed.time}
-📝 ${parsed.text}`,
-      { parse_mode: "Markdown" }
-    );
-  });
-
-  bot.onText(/\/today/, async (msg) => {
-    const chatId = msg.chat.id;
-    const user = await User.findOne({ chatId });
-    const timezone = user?.timezone || "Asia/Yangon";
-
-    const now = getUserLocalTime(timezone);
-    const currentDay = now.getDay();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentMonth = now.getMonth() + 1;
-    const currentDate = now.getDate();
-
-    const allTasks = await Task.find({ chatId, active: true });
-
-    const todayTasks = allTasks.filter((t) => {
-      if (t.type === "daily") return true;
-      if (t.type === "weekdays") return currentDay !== 0 && currentDay !== 6;
-      if (t.type === "weekly" && t.weekDay !== undefined) return t.weekDay === currentDay;
-      if (t.type === "once") {
-        const taskDate = new Date();
-        taskDate.setHours(t.hour, t.minute);
-        return taskDate.getDate() === currentDate;
-      }
-      return false;
-    });
-
-    const upcomingToday = todayTasks
-      .filter((t) => {
-        if (t.hour > currentHour) return true;
-        if (t.hour === currentHour && t.minute >= currentMinute) return true;
-        return false;
-      })
-      .sort((a, b) => a.hour - b.hour || a.minute - b.minute);
-
-    const passedToday = todayTasks
-      .filter((t) => {
-        if (t.hour < currentHour) return true;
-        if (t.hour === currentHour && t.minute < currentMinute) return true;
-        return false;
-      })
-      .sort((a, b) => b.hour - a.hour || b.minute - a.minute);
-
-    const otherTasks = allTasks
-      .filter((t) => !todayTasks.includes(t))
-      .sort((a, b) => a.hour - b.hour || a.minute - b.minute);
-
-    let response = `📅 *Today* - ${now.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    })}\n`;
-    response += `${formatTimezoneLabel(timezone)}\n\n`;
-
-    if (upcomingToday.length > 0) {
-      response += `⏰ *Upcoming:*\n`;
-      response += upcomingToday.map((t, i) => {
-        const time = `${t.hour.toString().padStart(2, "0")}:${t.minute.toString().padStart(2, "0")}`;
-        return `  ${i + 1}. ${time} - ${t.text}`;
-      }).join("\n");
-      response += "\n\n";
-    }
-
-    if (passedToday.length > 0) {
-      response += `✅ *Passed:*\n`;
-      response += passedToday.map((t) => {
-        const time = `${t.hour.toString().padStart(2, "0")}:${t.minute.toString().padStart(2, "0")}`;
-        return `  ${time} - ${t.text}`;
-      }).join("\n");
-      response += "\n\n";
-    }
-
-    const todayHolidays = await getTodayHolidays(currentMonth, currentDate);
-    if (todayHolidays.length > 0) {
-      response += `🎉 *Today is a Holiday!*\n`;
-      todayHolidays.forEach((h) => {
-        response += `  🇲🇲 ${h.name}\n`;
-      });
-      response += "\n";
-    }
-
-    if (upcomingToday.length === 0 && passedToday.length === 0 && otherTasks.length === 0) {
-      response += "📭 No reminders for today.";
-    }
-
-    if (otherTasks.length > 0) {
-      response += `\n📋 *All Reminders:*\n`;
-      response += otherTasks.map((t, i) => {
-        const time = `${t.hour.toString().padStart(2, "0")}:${t.minute.toString().padStart(2, "0")}`;
-        let type = "";
-        if (t.type === "daily") type = "Daily";
-        else if (t.type === "weekdays") type = "Mon-Fri";
-        else if (t.type === "weekly") type = getDayName(t.weekDay).slice(0, 3);
-        else if (t.type === "once") type = "Once";
-        return `  ${i + 1}. ${time} [${type}] - ${t.text}`;
-      }).join("\n");
-    }
-
-    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
-  });
-
-  bot.onText(/\/holidays/, async (msg) => {
-    const chatId = msg.chat.id;
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentDay = now.getDate();
-
-    const allHolidays = await Holiday.find({
-      year: now.getFullYear(),
-      $or: [
-        { month: currentMonth, day: { $gte: currentDay } },
-        { month: { $gt: currentMonth } },
-      ],
-    }).sort({ month: 1, day: 1 });
-
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    let response = `🎉 *Myanmar Holidays*\n`;
-    response += `${now.getFullYear()} | ${allHolidays.length} remaining\n\n`;
-
-    if (allHolidays.length > 0) {
-      response += allHolidays.map((h) => {
-        const dateStr = `${monthNames[h.month - 1]} ${h.day.toString().padStart(2, " ")}`;
-        return `${dateStr}  ${h.name}`;
-      }).join("\n");
-    } else {
-      response += "📭 No more holidays this year.";
-    }
-
-    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
-  });
-
-  bot.onText(/\/delete$/, (msg) => {
-    sendDeleteGuide(msg.chat.id);
-  });
-
-  bot.onText(/\/delete (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const number = parseInt(match[1].trim());
-
-    if (isNaN(number) || number < 1) {
-      bot.sendMessage(
-        chatId,
-        `❌ *Invalid number*
-
-Use: \`/delete <number>\`
-
-Example: \`/delete 1\`
-
-Use /today to see all reminders with numbers.`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    const activeTasks = await Task.find({ chatId, active: true }).sort({ createdAt: -1 });
-
-    if (number > activeTasks.length) {
-      bot.sendMessage(chatId, `❌ Invalid number.\n\nYou have ${activeTasks.length} reminders.\n\nUse /today to see all reminders with numbers.`);
-      return;
-    }
-
-    const taskToDelete = activeTasks[number - 1];
-    await Task.findByIdAndUpdate(taskToDelete._id, { active: false });
-    bot.sendMessage(chatId, `✅ Deleted: ${taskToDelete.text}`);
-  });
-
-  bot.onText(/\/deleteall$/, async (msg) => {
-    const chatId = msg.chat.id;
-
-    const count = await Task.countDocuments({ chatId, active: true });
-
-    if (count === 0) {
-      bot.sendMessage(chatId, "📭 You have no reminders to delete.");
-      return;
-    }
-
-    const keyboard = [
-      [{ text: "✅ Yes, delete all" }, { text: "❌ No, cancel" }],
-    ];
-
-    bot.sendMessage(
-      chatId,
-      `⚠️ *Delete all ${count} reminders?*
-
-This cannot be undone.`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: { keyboard, resize_keyboard: true },
-      }
-    );
-  });
-
-  bot.onText(/✅ Yes, delete all/, async (msg) => {
-    const chatId = msg.chat.id;
-    const count = await Task.countDocuments({ chatId, active: true });
-    await Task.updateMany({ chatId, active: true }, { active: false });
-    bot.sendMessage(chatId, `✅ Deleted all ${count} reminders.`);
-    sendReplyKeyboard(chatId);
-  });
-
-  bot.onText(/❌ No, cancel/, (msg) => {
-    bot.sendMessage(msg.chat.id, "Cancelled.");
-    sendReplyKeyboard(msg.chat.id);
-  });
-
-  bot.onText(/\/timezone$/, async (msg) => {
-    const chatId = msg.chat.id;
-    const user = await User.findOne({ chatId });
-    const currentTz = user?.timezone || "Asia/Yangon";
-
-    const keyboard = [
-      [{ text: "✅ Yes, change" }, { text: "❌ No, keep it" }],
-    ];
-
-    bot.sendMessage(
-      chatId,
-      `🌐 *Your Timezone*
-
-${formatTimezoneLabel(currentTz)}
-
-Do you want to change it?`,
-      {
-        parse_mode: "Markdown",
-        reply_markup: { keyboard, resize_keyboard: true },
-      }
-    );
-  });
-
-  bot.onText(/\/timezone (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const tz = match[1].trim();
-
-    if (!isValidTimezone(tz)) {
-      bot.sendMessage(
-        chatId,
-        `❌ *Timezone not found:* ${tz}\n\nType /settings to see all available timezones.`,
-        { parse_mode: "Markdown" }
-      );
-      return;
-    }
-
-    await User.findOneAndUpdate(
-      { chatId },
-      { timezone: tz, updatedAt: new Date() },
-      { upsert: true, new: true }
-    );
-
-    bot.sendMessage(
-      chatId,
-      `✅ Done! Timezone set to: ${formatTimezoneLabel(tz)}\n\n💤 Quiet hours: 12:05am-6:30am`
     );
   });
 
   bot.onText(/\/help/, (msg) => {
     sendReplyKeyboard(msg.chat.id);
-    bot.sendMessage(
-      msg.chat.id,
-      `📖 *Help*
-
-*Set Reminders:*
-• \`/remind 9am Task\` - One-time
-• \`/remind daily 7am Task\` - Every day
-• \`/remind weekdays 9am Task\` - Mon-Fri
-• \`/remind fri 9am Task\` - Every Friday
-
-*View:*
-• \`/today\` - Today's schedule
-• \`/holidays\` - Myanmar holidays
-• Get holiday notification at 12:00am if today is a holiday
-
-*Manage:*
-• \`/delete 1\` - Delete first reminder
-• \`/deleteall\` - Delete all (confirm)
-
-*Settings:*
-• \`/timezone Malaysia\` - Set timezone
-
-💤 Quiet hours: 12:05am-6:30am`,
-      { parse_mode: "Markdown" }
-    );
+    sendHelpGuide(msg.chat.id);
   });
 
-  bot.onText(/\/settings/, (msg) => {
-    sendReplyKeyboard(msg.chat.id);
-    bot.sendMessage(
-      msg.chat.id,
-      `⚙️ *Settings*
-
-*Commands:*
-• \`/timezone\` - Show timezone
-• \`/timezone Malaysia\` - Set timezone
-• \`/help\` - Show help
-
-💤 Quiet hours: 12:05am-6:30am`,
-      { parse_mode: "Markdown" }
-    );
-  });
-
-  bot.onText(/⏰ Remind/, (msg) => {
-    sendRemindGuide(msg.chat.id);
-  });
-
-  bot.onText(/📅 Today/, (msg) => {
+  bot.onText(/\/today/, async (msg) => {
     const chatId = msg.chat.id;
-    User.findOne({ chatId }).then((user) => {
-      const timezone = user?.timezone || "Asia/Yangon";
-      const now = getUserLocalTime(timezone);
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    const currentYear = now.getFullYear();
+    const weekday = WEEKDAY_NAMES[now.getDay()];
 
-      Task.find({ chatId, active: true }).sort({ hour: 1, minute: 1 }).then((tasks) => {
-        const upcoming = tasks.filter((t) => t.hour > currentHour || (t.hour === currentHour && t.minute >= currentMinute));
-        const passed = tasks.filter((t) => t.hour < currentHour || (t.hour === currentHour && t.minute < currentMinute));
+    const todayHolidays = await getHolidaysForDate(currentMonth, currentDay, currentYear);
+    const todayPersonalDates = await PersonalDate.find({ chatId, month: currentMonth, day: currentDay });
+    const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
+    const allPersonalDates = await PersonalDate.find({ chatId }).sort({ month: 1, day: 1 });
 
-        let response = `📅 *Today* - ${now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}\n`;
-        response += `${formatTimezoneLabel(timezone)}\n\n`;
+    const moonPhase = getMoonPhase(now);
 
-        if (upcoming.length > 0) {
-          response += `⏰ *Upcoming:*\n`;
-          response += upcoming.map((t, i) => {
-            const time = `${t.hour.toString().padStart(2, "0")}:${t.minute.toString().padStart(2, "0")}`;
-            return `  ${i + 1}. ${time} - ${t.text}`;
-          }).join("\n");
-          response += "\n\n";
-        }
-
-        if (passed.length > 0) {
-          response += `✅ *Passed:*\n`;
-          response += passed.map((t) => {
-            const time = `${t.hour.toString().padStart(2, "0")}:${t.minute.toString().padStart(2, "0")}`;
-            return `  ${time} - ${t.text}`;
-          }).join("\n");
-        }
-
-      if (upcoming.length === 0 && passed.length === 0) {
-        response += "📭 No reminders.";
+    const personalDatesWithCountdown = allPersonalDates.map((d) => {
+      const daysUntil = getDaysUntil(d.month, d.day, now);
+      let ageInfo = "";
+      if (d.type === "birthday" && d.birthYear) {
+        ageInfo = ` (Age ${currentYear - d.birthYear})`;
+      } else if (d.birthYear) {
+        ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
       }
+      return {
+        ...d.toObject(),
+        daysUntil,
+        countdown: formatCountdown(daysUntil),
+        monthDay: `${d.month}-${d.day}`,
+        ageInfo
+      };
+    }).sort((a, b) => a.daysUntil - b.daysUntil);
 
-        bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+    const monthHolidaysWithCountdown = monthHolidays
+      .filter((h) => {
+        if (currentMonth > now.getMonth() + 1) return true;
+        return h.day >= currentDay;
+      })
+      .map((h) => {
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        return {
+          ...h.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil)
+        };
       });
-    });
-  });
 
-  bot.onText(/🎉 Holiday/, (msg) => {
-    const chatId = msg.chat.id;
-    Holiday.find({ year: new Date().getFullYear() }).sort({ month: 1, day: 1 }).then((holidays) => {
-      const now = new Date();
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let response = `📅 *Today* - ${weekday}, ${getMonthName(currentMonth)} ${currentDay}, ${currentYear}
 
-      let response = `🎉 *Myanmar Holidays*\n`;
-      response += `${now.getFullYear()} | ${holidays.length} total\n\n`;
+🌙 Moon: ${moonPhase.emoji} ${moonPhase.name}
 
-      response += holidays.map((h) => `${monthNames[h.month - 1]} ${h.day.toString().padStart(2, " ")}  ${h.name}`).join("\n");
+`;
 
-      bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
-    });
-  });
-
-  bot.onText(/⚙️ Settings/, (msg) => {
-    const chatId = msg.chat.id;
-    User.findOne({ chatId }).then((user) => {
-      const currentTz = user?.timezone || "Asia/Yangon";
-
-      const keyboard = [
-        [{ text: "✅ Yes, change" }, { text: "❌ No, thanks" }],
-      ];
-
-      bot.sendMessage(
-        chatId,
-        `⚙️ *Settings*
-
-🌐 *Your Timezone:* ${formatTimezoneLabel(currentTz)}
-
-Do you want to change your timezone?`,
-        {
-          parse_mode: "Markdown",
-          reply_markup: { keyboard, resize_keyboard: true },
+    if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
+      response += `*🎉 Today:*\n`;
+      todayHolidays.forEach((h) => {
+        response += `  🇲🇲 ${h.name}\n`;
+      });
+      todayPersonalDates.forEach((d) => {
+        let ageStr = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear && d.type === "anniversary") {
+          ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
         }
-      );
-    });
-  });
+        response += `  ${d.emoji} ${d.name}${ageStr}\n`;
+      });
+      response += "\n";
+    }
 
-  bot.onText(/✅ Yes, change/, (msg) => {
-    const chatId = msg.chat.id;
-    let response = `🌐 *Choose Timezone:*\n\n`;
-    response += getTimezonesList();
-    response += `\n\nType: \`/timezone <name>\``;
+    if (monthHolidaysWithCountdown.length > 0) {
+      response += `*📆 This Month Holidays:*\n`;
+      response += monthHolidaysWithCountdown.map((h) => {
+        const weekday = getWeekdayName(h.month, h.day);
+        return `  ${h.day.toString().padStart(2, " ")} ${getShortMonthName(h.month)} (${weekday}) ${h.name.padEnd(18)} ${h.countdown}`;
+      }).join("\n");
+      response += "\n\n";
+    } else {
+      response += "\n";
+    }
+
+    if (personalDatesWithCountdown.length > 0) {
+      response += `*📌 Your Dates:*\n`;
+      response += personalDatesWithCountdown.map((d, i) => {
+        const num = (i + 1).toString().padStart(2, " ");
+        return `  ${num} ${d.emoji} ${d.name} (${d.monthDay})${d.ageInfo} - ${d.countdown}`;
+      }).join("\n");
+    }
+
+    if (todayHolidays.length === 0 && todayPersonalDates.length === 0 && 
+        monthHolidaysWithCountdown.length === 0 && personalDatesWithCountdown.length === 0) {
+      response += "No events. Use /adddate to add a date!";
+    }
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
   });
 
-  bot.onText(/❌ No, thanks/, (msg) => {
-    bot.sendMessage(msg.chat.id, "Okay, no changes made!");
-    sendReplyKeyboard(msg.chat.id);
+  bot.onText(/\/holidays$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    const holidays = await getUpcomingHolidays(now);
+    const totalHolidays = await getHolidayCount(currentYear);
+
+    let response = `🎉 *Myanmar Holidays*
+
+📅 ${currentYear} | ${totalHolidays} remaining
+
+`;
+
+    if (holidays.length > 0) {
+      response += holidays.map((h) => {
+        const weekday = getWeekdayName(h.month, h.day);
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        const countdown = formatCountdown(daysUntil);
+        return `${h.day.toString().padStart(2, " ")} ${getShortMonthName(h.month)} (${weekday}) ${h.name.padEnd(18)} ${countdown}`;
+      }).join("\n");
+    } else {
+      response += "No more holidays this year.";
+    }
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
+
+  bot.onText(/\/adddate$/, (msg) => {
+    sendAddDateGuide(msg.chat.id);
+  });
+
+  bot.onText(/\/adddate (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const input = match[1].trim();
+
+    const dateMatch = input.match(/^(\d{1,2})[-/](\d{1,2})\s+(\d{4})?\s*(.+)$/);
+    if (!dateMatch) {
+      bot.sendMessage(
+        chatId,
+        `❌ *Invalid format*
+
+Use: \`/adddate <MM-DD> [YYYY] <name>\`
+
+*Examples:*
+• \`/adddate 12-25 Christmas\`
+• \`/adddate 03-15 1990 My Birthday\`
+• \`/adddate 08-20 2020 Anniversary\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const month = parseInt(dateMatch[1]);
+    const day = parseInt(dateMatch[2]);
+    const birthYear = dateMatch[3] ? parseInt(dateMatch[3]) : null;
+    const name = (dateMatch[3] ? dateMatch[4] : dateMatch[3]).trim();
+
+    if (!isValidDate(month, day)) {
+      bot.sendMessage(chatId, "Invalid date. Please check month and day.");
+      return;
+    }
+
+    if (name.length < 2) {
+      bot.sendMessage(chatId, "Name must be at least 2 characters.");
+      return;
+    }
+
+    if (birthYear && (birthYear < 1900 || birthYear > 2100)) {
+      bot.sendMessage(chatId, "Invalid year. Use 1900-2100.");
+      return;
+    }
+
+    try {
+      const existing = await PersonalDate.findOne({
+        chatId,
+        name: { $regex: new RegExp(`^${name}$`, "i") }
+      });
+
+      if (existing) {
+        bot.sendMessage(chatId, `❌ "${name}" already exists.`);
+        return;
+      }
+
+      const emojis = name.match(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu) || [];
+      const emoji = emojis.length > 0 ? emojis.join("") : "📅";
+      const cleanName = name.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "").trim();
+
+      let type = "custom";
+      if (name.toLowerCase().includes("birthday") || name.toLowerCase().includes("birth")) {
+        type = "birthday";
+      } else if (name.toLowerCase().includes("anniversary") || name.toLowerCase().includes("anniversary")) {
+        type = "anniversary";
+      }
+
+      await PersonalDate.create({
+        chatId,
+        name: cleanName,
+        month,
+        day,
+        birthYear,
+        type,
+        emoji
+      });
+
+      const monthDay = `${getShortMonthName(month)} ${day}`;
+      const daysUntil = getDaysUntil(month, day, new Date());
+      const countdown = formatCountdown(daysUntil);
+
+      let infoStr = "";
+      if (type === "birthday" && birthYear) {
+        const age = new Date().getFullYear() - birthYear;
+        infoStr = `\n🎂 Age: ${age} years old`;
+      } else if (type === "anniversary" && birthYear) {
+        const years = new Date().getFullYear() - birthYear;
+        infoStr = `\n💕 ${years} years together`;
+      }
+
+      bot.sendMessage(
+        chatId,
+        `✅ *Added!*
+
+${emoji} ${cleanName}
+📆 ${monthDay}
+⏳ ${countdown}${infoStr}`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (error) {
+      console.error("Error adding date:", error);
+      bot.sendMessage(chatId, "Error saving date. Please try again.");
+    }
+  });
+
+  bot.onText(/\/deletedate$/, (msg) => {
+    sendDeleteDateGuide(msg.chat.id);
+  });
+
+  bot.onText(/\/deletedate (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const num = parseInt(match[1].trim());
+
+    if (isNaN(num) || num < 1) {
+      bot.sendMessage(chatId, "Invalid number. Check /today for your dates.");
+      return;
+    }
+
+    const dates = await PersonalDate.find({ chatId }).sort({ month: 1, day: 1 });
+
+    if (num > dates.length) {
+      bot.sendMessage(chatId, `Invalid number. You have ${dates.length} dates.`);
+      return;
+    }
+
+    const toDelete = dates[num - 1];
+    await PersonalDate.findByIdAndDelete(toDelete._id);
+
+    bot.sendMessage(chatId, `✅ Deleted: ${toDelete.emoji} ${toDelete.name}`);
+  });
+
+  bot.onText(/🎉 Holidays/, async (msg) => {
+    const chatId = msg.chat.id;
+    const now = new Date();
+    const holidays = await getUpcomingHolidays(now);
+    const totalHolidays = await getHolidayCount(now.getFullYear());
+
+    let response = `🎉 *Myanmar Holidays*
+
+📅 ${now.getFullYear()} | ${totalHolidays} remaining
+
+`;
+
+    if (holidays.length > 0) {
+      response += holidays.map((h) => {
+        const weekday = getWeekdayName(h.month, h.day);
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        const countdown = formatCountdown(daysUntil);
+        return `${h.day.toString().padStart(2, " ")} ${getShortMonthName(h.month)} (${weekday}) ${h.name.padEnd(18)} ${countdown}`;
+      }).join("\n");
+    } else {
+      response += "No more holidays this year.";
+    }
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
+
+  bot.onText(/📅 Today/, async (msg) => {
+    const chatId = msg.chat.id;
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+    const currentYear = now.getFullYear();
+    const weekday = WEEKDAY_NAMES[now.getDay()];
+
+    const todayHolidays = await getHolidaysForDate(currentMonth, currentDay, currentYear);
+    const todayPersonalDates = await PersonalDate.find({ chatId, month: currentMonth, day: currentDay });
+    const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
+    const allPersonalDates = await PersonalDate.find({ chatId }).sort({ month: 1, day: 1 });
+
+    const moonPhase = getMoonPhase(now);
+
+    const personalDatesWithCountdown = allPersonalDates.map((d) => {
+      const daysUntil = getDaysUntil(d.month, d.day, now);
+      let ageInfo = "";
+      if (d.type === "birthday" && d.birthYear) {
+        ageInfo = ` (Age ${currentYear - d.birthYear})`;
+      } else if (d.birthYear) {
+        ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
+      }
+      return {
+        ...d.toObject(),
+        daysUntil,
+        countdown: formatCountdown(daysUntil),
+        monthDay: `${d.month}-${d.day}`,
+        ageInfo
+      };
+    }).sort((a, b) => a.daysUntil - b.daysUntil);
+
+    const monthHolidaysWithCountdown = monthHolidays
+      .filter((h) => {
+        if (currentMonth > now.getMonth() + 1) return true;
+        return h.day >= currentDay;
+      })
+      .map((h) => {
+        const daysUntil = getDaysUntil(h.month, h.day, now);
+        return {
+          ...h.toObject(),
+          daysUntil,
+          countdown: formatCountdown(daysUntil)
+        };
+      });
+
+    let response = `📅 *Today* - ${weekday}, ${getMonthName(currentMonth)} ${currentDay}, ${currentYear}
+
+🌙 Moon: ${moonPhase.emoji} ${moonPhase.name}
+
+`;
+
+    if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
+      response += `*🎉 Today:*\n`;
+      todayHolidays.forEach((h) => {
+        response += `  🇲🇲 ${h.name}\n`;
+      });
+      todayPersonalDates.forEach((d) => {
+        let ageStr = "";
+        if (d.type === "birthday" && d.birthYear) {
+          ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
+        } else if (d.birthYear && d.type === "anniversary") {
+          ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
+        }
+        response += `  ${d.emoji} ${d.name}${ageStr}\n`;
+      });
+      response += "\n";
+    }
+
+    if (monthHolidaysWithCountdown.length > 0) {
+      response += `*📆 This Month Holidays:*\n`;
+      response += monthHolidaysWithCountdown.map((h) => {
+        const weekday = getWeekdayName(h.month, h.day);
+        return `  ${h.day.toString().padStart(2, " ")} ${getShortMonthName(h.month)} (${weekday}) ${h.name.padEnd(18)} ${h.countdown}`;
+      }).join("\n");
+      response += "\n\n";
+    } else {
+      response += "\n";
+    }
+
+    if (personalDatesWithCountdown.length > 0) {
+      response += `*📌 Your Dates:*\n`;
+      response += personalDatesWithCountdown.map((d, i) => {
+        const num = (i + 1).toString().padStart(2, " ");
+        return `  ${num} ${d.emoji} ${d.name} (${d.monthDay})${d.ageInfo} - ${d.countdown}`;
+      }).join("\n");
+    }
+
+    if (todayHolidays.length === 0 && todayPersonalDates.length === 0 && 
+        monthHolidaysWithCountdown.length === 0 && personalDatesWithCountdown.length === 0) {
+      response += "No events. Use /adddate to add a date!";
+    }
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
+
+  bot.onText(/➕ Add Date/, (msg) => {
+    sendAddDateGuide(msg.chat.id);
+  });
+
+  bot.onText(/🗑️ Delete Date/, (msg) => {
+    sendDeleteDateGuide(msg.chat.id);
+  });
+
+  bot.onText(/\/syncholidays/, async (msg) => {
+    const chatId = msg.chat.id;
+    const loadingMsg = await bot.sendMessage(chatId, "🔄 Syncing holidays...");
+    
+    try {
+      const { 
+        syncCurrentYear, 
+        checkApiHealth 
+      } = await import("../services/holiday.js");
+      
+      const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
+      
+      let apiStatus = "";
+      
+      if (CALENDARIFIC_API_KEY) {
+        const healthy = await checkApiHealth();
+        apiStatus = healthy 
+          ? "✅ Calendarific API: OK" 
+          : "❌ Calendarific API: Failed";
+      } else {
+        apiStatus = "⚠️ No API key configured";
+      }
+      
+      await syncCurrentYear();
+      
+      const now = new Date();
+      const { getHolidayCount, getUpcomingHolidays } = await import("../services/holiday.js");
+      
+      const total = await getHolidayCount(now.getFullYear());
+      const upcoming = await getUpcomingHolidays(now);
+      
+      bot.editMessageText(
+        `✅ *Holidays Synced!*
+
+${apiStatus}
+
+📅 ${now.getFullYear()} | ${total} holidays | ${upcoming.length} remaining
+
+Auto-sync on 1st of each month. On Jan 1st, also syncs next year.`,
+        {
+          chat_id: chatId,
+          message_id: loadingMsg.message_id,
+          parse_mode: "Markdown"
+        }
+      );
+    } catch (error) {
+      console.error("Sync error:", error);
+      bot.editMessageText(`❌ Sync failed: ${error.message}`, {
+        chat_id: chatId,
+        message_id: loadingMsg.message_id
+      });
+    }
+  });
+
+  bot.onText(/\/myanmar/, async (msg) => {
+    const chatId = msg.chat.id;
+    
+    try {
+      const { checkApiHealth } = await import("../services/holiday.js");
+      const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
+      
+      let status = "";
+      
+      if (CALENDARIFIC_API_KEY) {
+        const healthy = await checkApiHealth();
+        status = healthy 
+          ? "✅ Calendarific API working" 
+          : "❌ Calendarific API failed";
+      } else {
+        status = "⚠️ No API key configured";
+      }
+      
+      bot.sendMessage(
+        chatId,
+        `🇲🇲 *Myanmar Holidays*
+
+${status}
+
+Holiday data provided by Calendarific API.
+
+Use \`/syncholidays\` to refresh holidays.`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (error) {
+      console.error("Error:", error);
+      bot.sendMessage(chatId, "Error checking API status.");
+    }
   });
 };

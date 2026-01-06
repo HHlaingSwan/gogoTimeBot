@@ -4,8 +4,7 @@ import { registerCommands } from "./bot/command.js";
 import telegramRouter from "./routes/telegram.route.js";
 import connectDB from "./config/db.js";
 import { PORT, WEBHOOK_URL } from "./config/env.js";
-import { startScheduler } from "./services/scheduler.js";
-import { syncAllYears } from "./services/holiday.js";
+import { syncAllYears, startMonthlySync } from "./services/holiday.js";
 import bot from "./bot/bot.js";
 
 const app = express();
@@ -25,6 +24,8 @@ app.listen(PORT, async () => {
   try {
     await connectDB();
     await syncAllYears();
+
+    startMonthlySync(3, 0);
   } catch (error) {
     console.error("MongoDB error:", error.message);
     process.exit(1);
@@ -38,9 +39,8 @@ app.listen(PORT, async () => {
       console.error("Webhook setup failed:", error.message);
     }
   } else {
-    console.log("ℹ️ WEBHOOK_URL not set — using polling mode");
+    console.log("Using polling mode");
   }
 
-  startScheduler();
   console.log(`Server running on port ${PORT}`);
 });
