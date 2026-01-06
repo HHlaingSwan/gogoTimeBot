@@ -11,6 +11,10 @@ const holidaySchema = new mongoose.Schema(
     type: { type: String },
     country: { type: String, default: "MM" },
     canonicalUri: { type: String },
+    localName: { type: String },
+    primary: { type: Boolean, default: false },
+    canonicalUrl: { type: String },
+    fallback: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -7,7 +7,7 @@ import {
   formatDate,
 } from "../utils/countdown.js";
 
-const CALENDARIFIC_BASE_URL = "https://calendarific.com/api/v2"; //v2 not v7
+const CALENDARIFIC_BASE_URL = "https://calendarific.com/api/v2";
 
 async function fetchMyanmarHolidays(year) {
   if (!CALENDARIFIC_API_KEY) {
@@ -75,6 +75,27 @@ async function fetchMyanmarHolidays(year) {
   }
 }
 
+export async function checkApiHealth() {
+  if (!CALENDARIFIC_API_KEY) {
+    return false;
+  }
+
+  try {
+    const response = await axios.get(`${CALENDARIFIC_BASE_URL}/holidays`, {
+      params: {
+        api_key: CALENDARIFIC_API_KEY,
+        country: "MM",
+        year: new Date().getFullYear(),
+      },
+      timeout: 10000,
+    });
+    return response.data.response?.holidays !== undefined;
+  } catch (error) {
+    console.error("API health check failed:", error.message);
+    return false;
+  }
+}
+
 async function fetchFallbackHolidays(year) {
   const holidays = BUDDHIST_HOLIDAYS[year] || [];
 
@@ -122,11 +143,14 @@ async function fetchFallbackHolidays(year) {
 }
 
 export async function syncYear(year) {
-  await Holiday.deleteMany({ year, country: "MM" });
-  console.log(`Deleted holidays for ${year}`);
-
+  const existingCount = await Holiday.countDocuments({ year, country: "MM" });
+  
+  if (existingCount > 0) {
+    console.log(`${existingCount} holidays already exist for ${year}`);
+  }
+  
   const saved = await fetchMyanmarHolidays(year);
-  console.log(`Synced ${year}: ${saved.length} holidays added`);
+  console.log(`Synced ${year}: ${saved.length} new holidays added`);
 
   return saved;
 }
