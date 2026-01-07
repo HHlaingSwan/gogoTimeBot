@@ -1,11 +1,6 @@
 import axios from "axios";
 import Holiday from "../models/Holiday.js";
 import { CALENDARIFIC_API_KEY } from "../config/env.js";
-import {
-  getDaysUntil,
-  formatCountdown,
-  formatDate,
-} from "../utils/countdown.js";
 
 const CALENDARIFIC_BASE_URL = "https://calendarific.com/api/v2";
 
@@ -217,6 +212,15 @@ export async function getUpcomingHolidays(referenceDate = new Date()) {
   return holidays;
 }
 
+export async function getAllHolidays(year) {
+  const holidays = await Holiday.find({
+    year: year,
+    country: "MM",
+  }).sort({ month: 1, day: 1 });
+
+  return holidays;
+}
+
 export async function getTodayHolidays(month, day) {
   const year = new Date().getFullYear();
 
@@ -252,35 +256,6 @@ export async function getHolidaysForDate(
   });
 }
 
-export async function getAllHolidays(year = new Date().getFullYear()) {
-  return await Holiday.find({ year, country: "MM" }).sort({ month: 1, day: 1 });
-}
-
-export async function getHolidaysWithCountdown(referenceDate = new Date()) {
-  const holidays = await getUpcomingHolidays(referenceDate);
-
-  return holidays.map((h) => {
-    const daysUntil = getDaysUntil(h.month, h.day, referenceDate);
-    return {
-      ...h.toObject(),
-      daysUntil,
-      countdown: formatCountdown(daysUntil),
-      dateStr: formatDate(h.month, h.day),
-    };
-  });
-}
-
 export async function getHolidayCount(year = new Date().getFullYear()) {
   return await Holiday.countDocuments({ year, country: "MM" });
-}
-
-export async function searchHolidays(query) {
-  const regex = new RegExp(query, "i");
-  const year = new Date().getFullYear();
-
-  return await Holiday.find({
-    year,
-    country: "MM",
-    $or: [{ name: regex }, { localName: regex }],
-  }).sort({ month: 1, day: 1 });
 }

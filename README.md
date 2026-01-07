@@ -1,25 +1,27 @@
-# Myanmar Holiday & Date Tracker Bot
+# Myanmar Expense Tracker Bot
 
-A Telegram bot for tracking Myanmar holidays and personal dates with countdowns, moon phases, and age display.
+A simple Telegram bot for tracking daily expenses with Myanmar holidays.
 
 ## Features
 
-- **Myanmar Holidays** - Syncs from Calendarific API with Burmese names
-- **Personal Dates** - Birthdays, anniversaries with age display
-- **Moon Phases** - Shows current moon phase
-- **Countdowns** - Days until next event
+- **Daily Expenses** - Quick expense tracking with Burmese/English
+- **Monthly Budget** - Set budget and track spending
+- **Budget Warnings** - Alerts at 80% and over budget
+- **Myanmar Holidays** - Sync from Calendarific API
+- **Simple Commands** - Natural language parsing
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `/today` | Today + moon phase + holidays + your dates with age |
-| `/holidays` | All Myanmar holidays remaining this year |
-| `/adddate 12-25 Name` | Add personal date |
-| `/adddate 12-25 1990 Name` | Add with birth year (shows age) |
-| `/deletedate 1` | Delete by number from `/today` |
-| `/syncholidays` | Force sync holidays from API |
-| `/help` | Show help |
+| Input | Description |
+|-------|-------------|
+| `breakfast 1000` | Add expense |
+| `lunch 3000` | Add expense |
+| `ညနေစာ 5000` | Add expense (Burmese) |
+| `/today` | Today's expenses |
+| `/thismonth` | Monthly overview with budget |
+| `/holidays` | Myanmar holidays |
+| `/budget 300000` | Set monthly budget |
+| `/settings` | Bot settings (includes recent expenses) |
 
 ## Setup
 
@@ -28,7 +30,7 @@ A Telegram bot for tracking Myanmar holidays and personal dates with countdowns,
 - Node.js 18+
 - MongoDB (local or Atlas)
 - Telegram Bot Token from [@BotFather](https://t.me/BotFather)
-- Calendarific API Key (free at https://calendarific.com)
+- Calendarific API Key (optional, free at https://calendarific.com)
 
 ### Environment Variables (.env)
 
@@ -53,21 +55,33 @@ npm run dev
 ├── index.js                 # Express server
 ├── bot/
 │   ├── bot.js              # Telegram bot setup
-│   └── command.js          # All commands
+│   ├── command.js          # All commands
+│   └── handlers.js         # Command handlers
 ├── config/
 │   ├── db.js               # MongoDB connection
 │   └── env.js              # Environment variables
 ├── models/
-│   ├── Holiday.js          # Myanmar holidays
-│   └── PersonalDate.js     # User personal dates
+│   ├── Budget.js           # Monthly budget
+│   ├── Expense.js          # Expense transactions
+│   └── Holiday.js          # Myanmar holidays
 ├── services/
-│   ├── holiday.js          # Calendarific API + fallback
-│   └── dateService.js      # Personal date CRUD
-├── utils/
-│   └── countdown.js        # Moon phases, age, countdowns
+│   ├── expense.js          # Expense CRUD + budget logic
+│   └── holiday.js          # Calendarific API
 └── routes/
     └── telegram.route.js   # Webhook route
 ```
+
+## Auto Categories
+
+| Keyword | Category |
+|---------|----------|
+| breakfast, မနက်စာ | Breakfast |
+| lunch, နေ့လည်စာ | Lunch |
+| dinner, ညနေစာ | Dinner |
+| coffee, ကော်ဖီ | Coffee |
+| snack, မုနပျံ | Snack |
+| transport, ကားခ | Transport |
+| grocery, ဈေး | Grocery |
 
 ## Deployment
 

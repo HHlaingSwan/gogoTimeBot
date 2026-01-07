@@ -1,71 +1,84 @@
 import bot from "./bot.js";
-import PersonalDate from "../models/PersonalDate.js";
 import {
-  sendReplyKeyboard,
-  sendHelpGuide,
-  sendAddDateGuide,
+  handleStart,
+  handleHelp,
+  handleTodayExpenses,
+  handleThisMonth,
+  handleRecent,
+  handleDeleteExpense,
+  handleExpense,
   handleHolidays,
-  handleToday,
-  handleAddDate,
+  handleSettings,
   handleSyncHolidays,
+  handleSetBudget,
+  handleBudgetCommand,
+  sendReplyKeyboard,
 } from "./handlers.js";
 
 export const registerCommands = () => {
   bot.onText(/\/start/, (msg) => {
-    sendReplyKeyboard(msg.chat.id);
-    bot.sendMessage(
-      msg.chat.id,
-      `👋 *Welcome!*
-
-Track holidays, birthdays & events with countdowns and age.
-
-*Commands:*
-• \`/today\` - Everything including age
-• \`/holidays\` - All holidays this year
-• \`/adddate 12-25 1990 Name\` - Add with age
-• \`/deletedate 1\` - Delete date
-
-Type \`/help\` for more.`,
-      { parse_mode: "Markdown" }
-    );
+    handleStart(msg.chat.id);
   });
 
   bot.onText(/\/help/, (msg) => {
-    sendReplyKeyboard(msg.chat.id);
-    sendHelpGuide(msg.chat.id);
+    handleHelp(msg.chat.id);
   });
 
-  bot.onText(/\/holidays$/, (msg) => {
+  bot.onText(/\/today/, (msg) => {
+    handleTodayExpenses(msg.chat.id);
+  });
+
+  bot.onText(/\/thismonth/, (msg) => {
+    handleThisMonth(msg.chat.id);
+  });
+
+  bot.onText(/\/holidays/, (msg) => {
     handleHolidays(msg.chat.id);
   });
 
-  bot.onText(/\/adddate$/, (msg) => {
-    sendAddDateGuide(msg.chat.id);
+  bot.onText(/\/settings/, (msg) => {
+    handleSettings(msg.chat.id);
   });
 
-  bot.onText(/\/adddate (.+)/, async (msg, match) => {
-    await handleAddDate(msg.chat.id, match);
-  });
-
-  bot.onText(/\/deletedate/, async (msg) => {
-    const chatId = msg.chat.id;
-    const dates = await PersonalDate.find({ chatId }).sort({ month: 1, day: 1 });
-
-    if (dates.length === 0) {
-        bot.sendMessage(chatId, "You have no dates to delete.");
-        return;
+  bot.onText(/\/budget\s*(.*)/, (msg, match) => {
+    const input = match[1].trim();
+    if (input) {
+      handleBudgetCommand(msg.chat.id, input);
+    } else {
+      handleSetBudget(msg.chat.id);
     }
+  });
 
-    const keyboard = dates.map((date, index) => ([{
-        text: `${index + 1}. ${date.emoji} ${date.name}`,
-        callback_data: `delete_${date._id}`
-    }]));
+  bot.onText(/Today/, (msg) => {
+    handleTodayExpenses(msg.chat.id);
+  });
 
-    bot.sendMessage(chatId, "Which date would you like to delete?", {
-        reply_markup: {
-            inline_keyboard: keyboard
-        }
-    });
+  bot.onText(/This Month/, (msg) => {
+    handleThisMonth(msg.chat.id);
+  });
+
+  bot.onText(/Holidays/, (msg) => {
+    handleHolidays(msg.chat.id);
+  });
+
+  bot.onText(/Settings/, (msg) => {
+    handleSettings(msg.chat.id);
+  });
+
+  bot.onText(/Help/, (msg) => {
+    handleHelp(msg.chat.id);
+  });
+
+  bot.onText(/^(?![\/])(.+)\s+(\d+(?:,\d{3})*(?:\.\d+)?)$/, (msg, match) => {
+    const description = match[1].trim();
+    const amount = match[2].trim();
+    handleExpense(msg.chat.id, `${amount} ${description}`);
+  });
+
+  bot.onText(/^(?![\/])(\d+(?:,\d{3})*(?:\.\d+)?)\s+(.+)$/, (msg, match) => {
+    const amount = match[1].trim();
+    const description = match[2].trim();
+    handleExpense(msg.chat.id, `${amount} ${description}`);
   });
 
   bot.on("callback_query", async (callbackQuery) => {
@@ -73,80 +86,16 @@ Type \`/help\` for more.`,
     const data = callbackQuery.data;
 
     if (data.startsWith("delete_")) {
-        const dateId = data.split("_")[1];
-        try {
-            const deletedDate = await PersonalDate.findByIdAndDelete(dateId);
-            if (deletedDate) {
-                bot.editMessageText(`✅ Deleted: ${deletedDate.emoji} ${deletedDate.name}`, {
-                    chat_id: chatId,
-                    message_id: callbackQuery.message.message_id
-                });
-            } else {
-                bot.editMessageText("Date not found or already deleted.", {
-                    chat_id: chatId,
-                    message_id: callbackQuery.message.message_id
-                });
-            }
-        } catch (error) {
-            console.error("Error deleting date:", error);
-            bot.editMessageText("Error deleting date. Please try again.", {
-                chat_id: chatId,
-                message_id: callbackQuery.message.message_id
-            });
-        }
-    }
-  
-    // Keep the other callback query handlers
-    if (data === "sync_holidays") {
+      const expenseId = data.replace("delete_", "");
+      await handleDeleteExpense(chatId, expenseId, callbackQuery.message.message_id);
+    } else if (data === "sync_holidays") {
       await handleSyncHolidays(chatId, callbackQuery.message.message_id);
-    } else if (data === "view_holidays") {
-      await handleHolidays(chatId);
-    }
-
-    bot.answerCallbackQuery(callbackQuery.id);
-  });
-
-  bot.onText(/🎉 Holidays/, (msg) => {
-    handleHolidays(msg.chat.id);
-  });
-
-  bot.onText(/\/today/, (msg) => {
-    handleToday(msg.chat.id);
-  });
-
-  bot.onText(/📅 Today/, (msg) => {
-    handleToday(msg.chat.id);
-  });
-
-  bot.onText(/➕ Add Date/, (msg) => {
-    sendAddDateGuide(msg.chat.id);
-  });
-
-  bot.onText(/🗑️ Delete Date/, (msg) => {
-    sendDeleteDateGuide(msg.chat.id);
-  });
-
-  bot.onText(/🔄 Sync Holidays/, async (msg) => {
-    await handleSyncHolidays(msg.chat.id);
-  });
-
-  bot.onText(/❓ Help/, (msg) => {
-    sendReplyKeyboard(msg.chat.id);
-    sendHelpGuide(msg.chat.id);
-  });
-
-  bot.onText(/\/syncholidays/, async (msg) => {
-    await handleSyncHolidays(msg.chat.id);
-  });
-
-  bot.on("callback_query", async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
-    const data = callbackQuery.data;
-
-    if (data === "sync_holidays") {
-      await handleSyncHolidays(chatId, callbackQuery.message.message_id);
-    } else if (data === "view_holidays") {
-      await handleHolidays(chatId);
+    } else if (data === "set_budget") {
+      await handleSetBudget(chatId, callbackQuery.message.message_id);
+    } else if (data === "recent_expenses") {
+      await handleRecent(chatId);
+    } else if (data === "settings") {
+      await handleSettings(chatId, callbackQuery.message.message_id);
     }
 
     bot.answerCallbackQuery(callbackQuery.id);

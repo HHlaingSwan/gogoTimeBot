@@ -1,443 +1,426 @@
 import bot from "./bot.js";
-import Holiday from "../models/Holiday.js";
-import PersonalDate from "../models/PersonalDate.js";
-import Setting from "../models/Setting.js";
-import {
-  getDaysUntil,
-  formatCountdown,
-  getMonthName,
-  getShortMonthName,
-  getWeekdayName,
-  isValidDate,
-  getMoonPhase,
-  formatAge,
-  formatYearsTogether,
-  parseDateInput,
-} from "../utils/countdown.js";
 import {
   getUpcomingHolidays,
-  getHolidaysByMonth,
-  getHolidaysForDate,
-  getHolidayCount,
+  getAllHolidays,
   syncCurrentYear,
   checkApiHealth,
 } from "../services/holiday.js";
-
-const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import {
+  parseExpense,
+  addExpense,
+  getTodayExpenses,
+  getMonthExpenses,
+  getBudget,
+  setBudget,
+  checkBudgetWarning,
+  getBudgetReport,
+} from "../services/expense.js";
 
 export function sendReplyKeyboard(chatId) {
   const keyboard = [
-    [{ text: "📅 Today" }, { text: "🎉 Holidays" }],
-    [{ text: "🔄 Sync Holidays" }, { text: "❓ Help" }],
-    [{ text: "➕ Add Date" }, { text: "🗑️ Delete Date" }],
+    [{ text: "Today" }, { text: "This Month" }],
+    [{ text: "Holidays" }, { text: "Settings" }],
   ];
   bot.sendMessage(chatId, "Choose an option:", {
     reply_markup: { keyboard, resize_keyboard: true },
   });
 }
 
-export function sendHelpGuide(chatId) {
+export function handleStart(chatId) {
+  sendReplyKeyboard(chatId);
   bot.sendMessage(
     chatId,
-    `📖 *Help*
+    `Welcome!
 
-*Main:*
-• \\\`/today\\\
-- Today, holidays, your dates with age
-• \\\`/holidays\\\
-- All holidays this year
-• \\\`/syncholidays\\\
-- Fetch latest holidays from API
+Track your daily expenses easily.
 
-*Dates:*
-• \\\`/adddate 12-25 Name\\\
-- Add date
-• \\\`/adddate 12-25 1990 Name\\\
-- Add with birth year for age
-• \\\`/deletedate 1\\\
-- Delete by number
+Just type:
+breakfast 1000
+lunch 3000
+coffee 2000
 
-*Note:* Numbers in /today are for /deletedate`,
+Commands:
+/today - Today's expenses
+/thismonth - Monthly overview with budget
+/holidays - Myanmar holidays
+/settings - Bot settings`,
     { parse_mode: "Markdown" }
   );
 }
 
-export function sendAddDateGuide(chatId) {
+export function handleHelp(chatId) {
+  sendReplyKeyboard(chatId);
   bot.sendMessage(
     chatId,
-    `➕ *Add Personal Date*
+    `Help
 
-*Simple:*
-\
-/adddate 12-25 Christmas\
+Add Expense:
+breakfast 1000
+lunch 3000
+ညနေစာ 5000
 
-*With birth year (for age):*
-\
-/adddate 12-25 1990 My Birthday\
-
-*With anniversary year:*
-\
-/adddate 08-20 2020 Anniversary`,
+Commands:
+/today - Today's expenses
+/thismonth - Monthly overview with budget
+/holidays - Myanmar holidays
+/settings - Bot settings (includes recent expenses)`,
     { parse_mode: "Markdown" }
   );
 }
 
+export function handleTodayExpenses(chatId) {
+  sendReplyKeyboard(chatId);
 
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
 
-function formatHolidayCard(holiday, referenceDate) {
-    const weekday = getWeekdayName(holiday.month, holiday.day);
-    const daysUntil = getDaysUntil(holiday.month, holiday.day, referenceDate);
-    const countdown = formatCountdown(daysUntil);
-    const dateStr = `${String(holiday.day).padStart(2, '0')}/${String(holiday.month).padStart(2, '0')} (${weekday})`;
-  
-    return `*${holiday.name}*\n  📅 ${dateStr}   ⏳ ${countdown}`;
-}
+  getTodayExpenses(chatId).then(({ expenses, total }) => {
+    const dateStr = now.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
 
-export async function handleHolidays(chatId) {
-    const now = new Date();
-    const currentYear = now.getFullYear();
+    let response = `📅 Today - ${dateStr}\n`;
 
-    const holidays = await getUpcomingHolidays(now);
-    const totalHolidays = await getHolidayCount(currentYear);
-
-    let response = `🎉 *Myanmar Holidays* (${currentYear}) | ${totalHolidays} remaining\n\n`;
-
-    if (holidays.length > 0) {
-        const holidaysByMonth = holidays.reduce((acc, holiday) => {
-            const monthName = getMonthName(holiday.month);
-            if (!acc[monthName]) {
-                acc[monthName] = [];
-            }
-            acc[monthName].push(holiday);
-            return acc;
-        }, {});
-
-        for (const monthName in holidaysByMonth) {
-            response += `*${monthName}*\n`;
-            response += holidaysByMonth[monthName]
-                .map((h) => `  • ${formatHolidayCard(h, now)}`)
-                .join('\n\n');
-            response += '\n\n';
-        }
+    if (expenses.length === 0) {
+      response += `\nNo expenses yet\n\nEnter: breakfast 1000`;
     } else {
-        response += "No more holidays this year.";
+      response += `\n`;
+      expenses.forEach((e) => {
+        response += `${e.category.padEnd(12)} ${e.amount.toLocaleString()} MMK\n`;
+      });
+      response += `\n───────────────────\n`;
+      response += `💰 Total: ${total.toLocaleString()} MMK`;
     }
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
 }
 
-export async function handleToday(chatId) {
+export function handleThisMonth(chatId) {
+  sendReplyKeyboard(chatId);
+
   const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentDay = now.getDate();
-  const currentYear = now.getFullYear();
-  const weekday = WEEKDAY_NAMES[now.getDay()];
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
 
-  const todayHolidays = await getHolidaysForDate(
-    currentMonth,
-    currentDay,
-    currentYear
-  );
-  const todayPersonalDates = await PersonalDate.find({
-    chatId,
-    month: currentMonth,
-    day: currentDay,
-  });
-  const monthHolidays = await getHolidaysByMonth(currentMonth, currentYear);
-  const allPersonalDates = await PersonalDate.find({ chatId }).sort({
-    month: 1,
-    day: 1,
-  });
+  getBudgetReport(chatId, year, month).then((report) => {
+    const monthName = now.toLocaleString("default", { month: "long" });
 
-  const moonPhase = getMoonPhase(now);
+    let response = `📅 ${monthName} ${year}\n`;
 
-  let response = `📅 *Today* - ${weekday}, ${getMonthName(
-    currentMonth
-  )} ${currentDay}, ${currentYear}\n\n`;
+    if (report.total === 0) {
+      response += `\nNo expenses yet\n\nEnter: breakfast 1000`;
+    } else {
+      response += `\n`;
+      const sortedDays = Object.entries(report.byDay).sort((a, b) => b[0] - a[0]);
+      sortedDays.slice(0, 10).forEach(([day, dayTotal]) => {
+        response += `Jan ${day.padStart(2, " ")}  ${dayTotal.toLocaleString().padStart(8)} MMK\n`;
+      });
 
-  response += `*🌙 Moon:* ${moonPhase.emoji} ${moonPhase.name}\n\n`;
-
-  if (todayHolidays.length > 0 || todayPersonalDates.length > 0) {
-    response += `*🎉 Today's Events*\n`;
-    todayHolidays.forEach((h) => {
-      response += `  • 🇲🇲 ${h.name}\n`;
-    });
-    todayPersonalDates.forEach((d) => {
-      let ageStr = "";
-      if (d.type === "birthday" && d.birthYear) {
-        ageStr = ` (🎂 Age ${currentYear - d.birthYear})`;
-      } else if (d.birthYear && d.type === "anniversary") {
-        ageStr = ` (💕 ${formatYearsTogether(d.birthYear, currentYear)})`;
+      if (sortedDays.length > 10) {
+        response += `   ...  ${sortedDays.length - 10} more days\n`;
       }
-      response += `  • ${d.emoji} ${d.name}${ageStr}\n`;
-    });
-    response += "\n";
-  }
+      response += `\n───────────────────\n`;
+      response += `💰 Total: ${report.total.toLocaleString()} MMK`;
 
-  const upcomingMonthHolidays = monthHolidays.filter(h => h.day >= currentDay);
+      if (report.budget > 0) {
+        const bar = "█".repeat(Math.min(report.percentUsed, 50));
+        const empty = "░".repeat(Math.max(0, 50 - report.percentUsed));
+        response += `\n\n📊 Budget Progress\n`;
+        response += `[${bar}${empty}] ${report.percentUsed}%\n`;
+        response += `💵 Used: ${report.percentUsed}% | Remaining: ${report.remaining.toLocaleString()} MMK\n`;
+        response += `📆 ${report.daysLeft} days left | Avg: ${report.averageDaily.toLocaleString()} MMK/day`;
 
-  if (upcomingMonthHolidays.length > 0) {
-    response += `*📆 This Month's Holidays*\n`;
-    response += upcomingMonthHolidays
-      .map((h) => `  • ${formatHolidayCard(h, now)}`)
-      .join('\n\n');
-    response += '\n\n';
-  }
-
-  if (allPersonalDates.length > 0) {
-    response += `*📌 Your Dates*\n`;
-    response += allPersonalDates
-      .map((d, i) => {
-        const daysUntil = getDaysUntil(d.month, d.day, now);
-        const countdown = formatCountdown(daysUntil);
-        let ageInfo = "";
-        if (d.type === "birthday" && d.birthYear) {
-          ageInfo = ` (Age ${currentYear - d.birthYear})`;
-        } else if (d.birthYear) {
-          ageInfo = ` (${formatYearsTogether(d.birthYear, currentYear)})`;
+        if (report.projectedTotal > report.budget) {
+          const over = report.projectedTotal - report.budget;
+          response += `\n⚠️ Projected: ${over.toLocaleString()} MMK over`;
+        } else {
+          const under = report.budget - report.projectedTotal;
+          response += `\n✅ Projected: ${under.toLocaleString()} MMK under`;
         }
-        return `  ${i + 1}. *${d.name}*${ageInfo}\n     📅 ${d.month}/${d.day}   ⏳ ${countdown}`;
-      })
-      .join('\n\n');
+      }
+    }
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
+}
+
+export async function handleRecent(chatId) {
+  sendReplyKeyboard(chatId);
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const Expense = (await import("../models/Expense.js")).default;
+  const expenses = await Expense.find({
+    chatId,
+    date: { $gte: startOfMonth },
+  }).sort({ date: -1 }).limit(10);
+
+  if (expenses.length === 0) {
+    bot.sendMessage(chatId, "No expenses this month.");
+    return;
   }
 
-  if (
-    todayHolidays.length === 0 &&
-    todayPersonalDates.length === 0 &&
-    upcomingMonthHolidays.length === 0 &&
-    allPersonalDates.length === 0
-  ) {
-    response += "No events. Use /adddate to add a date!";
+  let response = `Recent Expenses\n\n`;
+
+  const inlineKeyboard = [];
+
+  for (let i = 0; i < expenses.length; i++) {
+    const e = expenses[i];
+    const dateStr = e.date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    response += `${i + 1}. ${dateStr} - ${e.category}: ${e.amount.toLocaleString()} MMK\n`;
+    inlineKeyboard.push([{ text: `${i + 1}. Delete`, callback_data: `delete_${e._id}` }]);
+  }
+
+  response += `\nTotal: ${expenses.reduce((sum, e) => sum + e.amount, 0).toLocaleString()} MMK`;
+
+  bot.sendMessage(chatId, response, {
+    parse_mode: "Markdown",
+    reply_markup: { inline_keyboard: inlineKeyboard },
+  });
+}
+
+export async function handleDeleteExpense(chatId, expenseId, messageId) {
+  const Expense = (await import("../models/Expense.js")).default;
+
+  try {
+    const deleted = await Expense.findByIdAndDelete(expenseId);
+    if (deleted) {
+      bot.editMessageText(`Deleted: ${deleted.category} - ${deleted.amount.toLocaleString()} MMK`, {
+        chat_id: chatId,
+        message_id: messageId,
+      });
+    } else {
+      bot.editMessageText("Not found or already deleted.", {
+        chat_id: chatId,
+        message_id: messageId,
+      });
+    }
+  } catch (error) {
+    bot.editMessageText("Error deleting. Try again.", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+}
+
+export async function handleExpense(chatId, input) {
+  const result = parseExpense(input);
+
+  if (!result.success) {
+    bot.sendMessage(
+      chatId,
+      `Invalid format
+
+Example: breakfast 1000
+Or: lunch 3000`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  const { amount, description, category } = result.data;
+  await addExpense(chatId, amount, description, category);
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const monthlyTotal = await getMonthExpenses(chatId, year, month).then((r) => r.total);
+  const budget = await getBudget(chatId);
+  const warning = checkBudgetWarning(monthlyTotal, budget);
+
+  let response = `Added
+
+${category}: ${amount.toLocaleString()} MMK
+
+Today total: ${amount.toLocaleString()} MMK`;
+
+  if (warning) {
+    response += `\n\n⚠️ ${warning.message}`;
   }
 
   bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
 }
 
-export async function handleAddDate(chatId, match) {
-    const input = match[1].trim();
-    
-    let dateStr, name, parsedDate;
+export function handleHolidays(chatId) {
+  sendReplyKeyboard(chatId);
+  const now = new Date();
+  const year = now.getFullYear();
 
-    // Regex to find a date pattern at the beginning of the string
-    const dateRegex = /^((\d{1,2}[-\/]\d{1,2}(\s+\d{4})?)|(\d{4}[-\/]\d{1,2}[-\/]\d{1,2}))(\s+)/;
-    const dateMatch = input.match(dateRegex);
-
-    if (dateMatch) {
-        dateStr = dateMatch[1].trim();
-        name = input.substring(dateMatch[0].length).trim();
-        parsedDate = parseDateInput(dateStr);
-    } else {
-        // Fallback for cases where regex might fail, e.g., no space after date
-        const parts = input.split(' ');
-        dateStr = parts[0];
-        name = parts.slice(1).join(' ');
-        parsedDate = parseDateInput(dateStr);
-    }
-
-    if (!parsedDate || !parsedDate.month || !parsedDate.day) {
-        bot.sendMessage(
-            chatId,
-            `❌ *Invalid format*
-
-Use: \`/adddate <MM-DD> [YYYY] <name>\`
-
-*Examples:*
-• \`/adddate 12-25 Christmas\`
-• \`/adddate 03-15 1990 My Birthday\`
-• \`/adddate 08-20 2020 Anniversary\``,
-            { parse_mode: "Markdown" }
-        );
-        return;
-    }
-
-    const { month, day, year: birthYear } = parsedDate;
-
-    if (!isValidDate(month, day)) {
-      bot.sendMessage(chatId, "Invalid date. Please check month and day.");
+  getAllHolidays(year).then((holidays) => {
+    if (holidays.length === 0) {
+      bot.sendMessage(chatId, "No holidays. Go to Settings → Sync Holidays.");
       return;
     }
 
-    if (name.length < 2) {
-      bot.sendMessage(chatId, "Name must be at least 2 characters.");
-      return;
-    }
+    const grouped = holidays.reduce((acc, h) => {
+      const month = h.month;
+      if (!acc[month]) acc[month] = [];
+      acc[month].push(h);
+      return acc;
+    }, {});
 
-    if (birthYear && (birthYear < 1900 || birthYear > 2100)) {
-      bot.sendMessage(chatId, "Invalid year. Use 1900-2100.");
-      return;
-    }
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
 
-    try {
-      const existing = await PersonalDate.findOne({
-        chatId,
-        name: { $regex: new RegExp(`^${name}$`, "i") },
+    let response = `Myanmar Holidays - ${year}\n\n`;
+
+    for (const [month, list] of Object.entries(grouped)) {
+      response += `${monthNames[month - 1]}\n`;
+      list.forEach((h) => {
+        response += `${String(h.day).padStart(2, " ")} ${h.name}\n`;
       });
-
-      if (existing) {
-        bot.sendMessage(chatId, `❌ "${name}" already exists.`);
-        return;
-      }
-
-      const emojis = name.match(/\p{Emoji_Presentation}/gu) || [];
-      const emoji = emojis.length > 0 ? emojis.join("") : "📅";
-      const cleanName = name.replace(/\p{Emoji_Presentation}/gu, "").trim();
-
-      let type = "custom";
-      if (
-        name.toLowerCase().includes("birthday") ||
-        name.toLowerCase().includes("birth")
-      ) {
-        type = "birthday";
-      } else if (
-        name.toLowerCase().includes("anniversary") ||
-        name.toLowerCase().includes("anniversary")
-      ) {
-        type = "anniversary";
-      }
-
-      await PersonalDate.create({
-        chatId,
-        name: cleanName,
-        month,
-        day,
-        birthYear,
-        type,
-        emoji,
-      });
-
-      const monthDay = `${getShortMonthName(month)} ${day}`;
-      const daysUntil = getDaysUntil(month, day, new Date());
-      const countdown = formatCountdown(daysUntil);
-
-      let infoStr = "";
-      if (type === "birthday" && birthYear) {
-        const age = new Date().getFullYear() - birthYear;
-        infoStr = `\n🎂 Age: ${age} years old`;
-      } else if (type === "anniversary" && birthYear) {
-        const years = new Date().getFullYear() - birthYear;
-        infoStr = `\n💕 ${years} years together`;
-      }
-
-      bot.sendMessage(
-        chatId,
-        `✅ *Added!*
-
-${emoji} ${cleanName}
-📆 ${monthDay}
-⏳ ${countdown}${infoStr}`,
-        { parse_mode: "Markdown" }
-      );
-    } catch (error) {
-      console.error("Error adding date:", error);
-      bot.sendMessage(chatId, "Error saving date. Please try again.");
+      response += "\n";
     }
+
+    response += `Total: ${holidays.length} holidays`;
+
+    bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
+  });
 }
 
+export function handleSettings(chatId, messageId) {
+  getBudget(chatId).then((budgetLimit) => {
+    const inlineKeyboard = [
+      [{ text: "Sync Holidays", callback_data: "sync_holidays" }],
+      [{ text: "Set Budget", callback_data: "set_budget" }],
+      [{ text: "Recent Expenses", callback_data: "recent_expenses" }],
+    ];
 
+    const status = budgetLimit > 0
+      ? `Budget: ${budgetLimit.toLocaleString()} MMK`
+      : "No budget set";
 
-export async function handleSyncHolidays(chatId, messageId) {
-    const lastSyncSetting = await Setting.findOne({ key: "lastSyncTimestamp" });
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    const text = `Settings\n\n${status}`;
 
-    if (lastSyncSetting && (new Date() - new Date(lastSyncSetting.value)) < thirtyDays) {
-        const remainingTime = thirtyDays - (new Date() - new Date(lastSyncSetting.value));
-        const remainingDays = Math.ceil(remainingTime / (1000 * 60 * 60 * 24));
-        bot.sendMessage(chatId, `You can sync holidays again in ${remainingDays} days.`);
-        return;
+    if (messageId) {
+      bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: inlineKeyboard },
+      });
+    } else {
+      bot.sendMessage(chatId, text, {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: inlineKeyboard },
+      });
+    }
+  });
+}
+
+export function handleSyncHolidays(chatId, messageId) {
+  bot.sendMessage(chatId, "Syncing...").then((msg) => {
+    handleSyncHolidaysCallback(chatId, msg.message_id);
+  });
+}
+
+async function handleSyncHolidaysCallback(chatId, messageId) {
+  try {
+    const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
+    let apiStatus = "";
+
+    if (CALENDARIFIC_API_KEY) {
+      const health = await checkApiHealth();
+      apiStatus = health.healthy ? "API OK" : health.message;
+    } else {
+      apiStatus = "No API key";
     }
 
-    const loadingMsg = messageId 
-      ? { chat: { id: chatId }, message_id: messageId }
-      : await bot.sendMessage(chatId, "🔄 Syncing holidays...");
-  
-    try {
-      const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
-  
-      let apiStatus = "";
-      let apiHealth = null;
-  
-      if (CALENDARIFIC_API_KEY) {
-        apiHealth = await checkApiHealth();
-        if (apiHealth.healthy) {
-          apiStatus = "✅ Calendarific API OK";
-        } else {
-          apiStatus = `❌ ${apiHealth.message}`;
-        }
-      } else {
-        apiStatus = "⚠️ No API key";
-      }
-  
-      const syncResult = await syncCurrentYear();
-  
-      if (syncResult.success) {
-        await Setting.findOneAndUpdate(
-            { key: "lastSyncTimestamp" },
-            { value: new Date() },
-            { upsert: true }
-        );
-      }
+    const result = await syncCurrentYear();
+    const total = await getHolidayCount(new Date().getFullYear());
 
-      const now = new Date();
-      const total = await getHolidayCount(now.getFullYear());
-      const upcoming = await getUpcomingHolidays(now);
-  
-      const inlineKeyboard = [
-        [{ text: "🎉 View Holidays", callback_data: "view_holidays" }],
-        [{ text: "🔄 Refresh", callback_data: "sync_holidays" }],
-      ];
-  
-      if (syncResult.success) {
-        const addedCount = syncResult.holidays.length;
-        const emoji = addedCount > 0 ? "✅" : "ℹ️";
-        const title = addedCount > 0 ? "Holidays Synced!" : "Already Up to Date";
-        const addedText = addedCount > 0 ? `➕ ${addedCount} new` : "";
-  
-        bot.editMessageText(
-          `${emoji} *${title}*
+    if (result.success) {
+      const added = result.holidays?.length || 0;
+      const title = added > 0 ? "Synced" : "Up to Date";
 
-${apiStatus} | ${total} holidays | ${upcoming.length} upcoming
-${addedText}`,
-          {
-            chat_id: chatId,
-            message_id: loadingMsg.message_id,
-            parse_mode: "Markdown",
-            reply_markup: { inline_keyboard: inlineKeyboard },
-          }
-        );
-      } else {
-        const errorKeyboard = [
-          [{ text: "🔄 Try Again", callback_data: "sync_holidays" }],
-        ];
-        if (!CALENDARIFIC_API_KEY) {
-          errorKeyboard.unshift([{ text: "📖 Setup Guide", callback_data: "api_guide" }]);
-        }
-  
-        bot.editMessageText(
-          `❌ *Sync Failed*
-
-${syncResult.error || apiStatus}`,
-          {
-            chat_id: chatId,
-            message_id: loadingMsg.message_id,
-            parse_mode: "Markdown",
-            reply_markup: { inline_keyboard: errorKeyboard },
-          }
-        );
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
       bot.editMessageText(
-        `❌ *Sync Failed*
-
-An unexpected error occurred. Please try again.`,
+        `${title}\n\n${apiStatus} | ${total} holidays`,
         {
           chat_id: chatId,
-          message_id: loadingMsg.message_id,
+          message_id: messageId,
           parse_mode: "Markdown",
           reply_markup: {
-            inline_keyboard: [[{ text: "🔄 Try Again", callback_data: "sync_holidays" }]],
+            inline_keyboard: [[{ text: "Back", callback_data: "settings" }]],
+          },
+        }
+      );
+    } else {
+      bot.editMessageText(
+        `Failed\n\n${result.error || apiStatus}`,
+        {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[{ text: "Try Again", callback_data: "sync_holidays" }]],
           },
         }
       );
     }
+  } catch (error) {
+    console.error("Sync error:", error);
+    bot.editMessageText("Failed. Try again.", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+}
+
+export function handleSetBudget(chatId, messageId) {
+  const text = `Set Budget
+
+Enter monthly budget:
+Example: budget 300000`;
+
+  if (messageId) {
+    bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [[{ text: "Back", callback_data: "settings" }]],
+      },
+    });
+  } else {
+    bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
+  }
+}
+
+export function handleBudgetCommand(chatId, input) {
+  const trimmed = input.trim().toLowerCase();
+  const match = trimmed.match(/(\d+(?:,\d{3})*)/);
+
+  if (!match) {
+    bot.sendMessage(
+      chatId,
+      `Invalid format
+
+Example: budget 300000`,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  const limit = parseInt(match[1].replace(/,/g, ""));
+
+  if (limit <= 0) {
+    bot.sendMessage(chatId, "Please enter a valid amount.");
+    return;
+  }
+
+  setBudget(chatId, limit).then(() => {
+    bot.sendMessage(
+      chatId,
+      `Budget set!\n\nMonthly: ${limit.toLocaleString()} MMK`,
+      { parse_mode: "Markdown" }
+    );
+  });
 }
