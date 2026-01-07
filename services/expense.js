@@ -7,7 +7,7 @@ const CATEGORIES = {
   snack: ["snack", "မုန့်", "အစားအသောက်", "မာလာရှမ်းကော"],
   coffee: ["coffee", "ကော်ဖီ", "လက်ဖက်ရည်", "လက်ဖက်ရည်တိုက်"],
   transport: ["transport", "ကားခ", "ဘတ်စ်ကား", "တက္ကစီ", "taxi", "bus"],
-  grocery: ["grocery", "ဈေး", "စျေးဝယ်", "စျေးကုန်"],
+  shopping: ["shopping", "ဈေး", "စျေးဝယ်", "စျေးကုန်"],
 };
 
 function detectCategory(text) {

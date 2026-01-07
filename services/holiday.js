@@ -78,40 +78,23 @@ async function fetchMyanmarHolidays(year) {
   }
 }
 
-export async function checkApiHealth() {
-  if (!CALENDARIFIC_API_KEY) {
-    return { healthy: false, message: "API key not configured" };
-  }
-
-  try {
-    const response = await axios.get(`${CALENDARIFIC_BASE_URL}/holidays`, {
-      params: {
-        api_key: CALENDARIFIC_API_KEY,
-        country: "MM",
-        year: new Date().getFullYear(),
-      },
-      timeout: 10000,
-    });
-    return { healthy: true, message: "API is working" };
-  } catch (error) {
-    let message = "API check failed";
-    if (error.response?.status === 401) {
-      message = "Invalid API key";
-    } else if (error.code === "ECONNABORTED") {
-      message = "Request timed out";
-    } else if (error.message.includes("Network Error")) {
-      message = "Network error";
-    }
-    console.error("API health check failed:", error.message);
-    return { healthy: false, message };
-  }
-}
-
 export async function syncYear(year) {
   const existingCount = await Holiday.countDocuments({ year, country: "MM" });
   console.log(`${existingCount} holidays already exist for ${year}`);
 
   const result = await fetchMyanmarHolidays(year);
+  if (!result.success) {
+    return result;
+  }
+
+  const deletedOld = await Holiday.deleteMany({
+    country: "MM",
+    year: { $lt: year }
+  });
+  if (deletedOld.deletedCount > 0) {
+    console.log(`Deleted ${deletedOld.deletedCount} old holidays`);
+  }
+
   console.log(`Synced ${year}: ${result.holidays.length} new holidays added`);
 
   return { ...result, existingCount };

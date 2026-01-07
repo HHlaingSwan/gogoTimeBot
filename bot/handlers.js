@@ -2,7 +2,6 @@ import bot from "./bot.js";
 import {
   getAllHolidays,
   syncCurrentYear,
-  checkApiHealth,
   getHolidayCount,
 } from "../services/holiday.js";
 import {
@@ -341,20 +340,6 @@ export function handleSyncHolidays(chatId, messageId, callbackQueryId) {
 
 async function handleSyncHolidaysCallback(chatId, messageId) {
   try {
-    let apiStatus = "";
-
-    if (process.env.CALENDARIFIC_API_KEY) {
-      try {
-        const health = await checkApiHealth();
-        apiStatus = health.healthy ? "API OK" : health.message;
-      } catch (healthError) {
-        console.error("Health check error:", healthError.message);
-        apiStatus = "API check failed";
-      }
-    } else {
-      apiStatus = "No API key";
-    }
-
     console.log("Starting holiday sync...");
     const result = await syncCurrentYear();
     console.log("Sync result:", result);
@@ -366,7 +351,7 @@ async function handleSyncHolidaysCallback(chatId, messageId) {
       const added = result.holidays?.length || 0;
       const title = added > 0 ? "Synced" : "Up to Date";
 
-      bot.editMessageText(`${title}\n\n${apiStatus} | ${total} holidays`, {
+      bot.editMessageText(`${title}\n\n${total} holidays`, {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: "Markdown",
@@ -375,7 +360,7 @@ async function handleSyncHolidaysCallback(chatId, messageId) {
         },
       });
     } else {
-      bot.editMessageText(`Failed\n\n${result.error || apiStatus}`, {
+      bot.editMessageText(`Failed\n\n${result.error}`, {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: "Markdown",
