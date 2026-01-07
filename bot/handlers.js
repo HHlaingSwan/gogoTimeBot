@@ -127,15 +127,11 @@ export function handleThisMonth(chatId) {
     } else {
       response += `\n`;
       const sortedDays = Object.entries(byDay).sort((a, b) => b[0] - a[0]);
-      sortedDays.slice(0, 10).forEach(([day, dayTotal]) => {
-        response += `Jan ${day.padStart(2, " ")}  ${dayTotal
+      sortedDays.forEach(([day, dayTotal]) => {
+        response += `${monthName.slice(0, 3)} ${day.padStart(2, " ")}  ${dayTotal
           .toLocaleString()
           .padStart(8)}\n`;
       });
-
-      if (sortedDays.length > 10) {
-        response += `   ...  ${sortedDays.length - 10} more days\n`;
-      }
       response += `\n───────────────────\n`;
       response += `💰 Total: ${total.toLocaleString()}`;
     }
@@ -304,7 +300,10 @@ export function handleSettings(chatId, messageId) {
     [{ text: "Recent Expenses", callback_data: "recent_expenses" }],
   ];
 
-  const text = `Settings`;
+  const text = `Settings
+
+• Sync Holidays - Update Myanmar holidays from API
+• Recent Expenses - View and delete recent expenses`;
 
   if (messageId) {
     bot.editMessageText(text, {
