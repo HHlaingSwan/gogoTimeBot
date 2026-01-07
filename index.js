@@ -4,7 +4,7 @@ import { registerCommands } from "./bot/command.js";
 import telegramRouter from "./routes/telegram.route.js";
 import connectDB from "./config/db.js";
 import { PORT } from "./config/env.js";
-import { syncCurrentAndNextYear } from "./services/holiday.js";
+import { syncCurrentYear } from "./services/holiday.js";
 
 const app = express();
 
@@ -24,16 +24,11 @@ app.listen(PORT, async () => {
     await connectDB();
 
     const now = new Date();
-    const isJanuary = now.getMonth() === 0;
-    const isFirstDay = now.getDate() === 1;
-
-    if (isJanuary && isFirstDay) {
-      console.log("January 1st - syncing current and next year holidays");
-      await syncCurrentAndNextYear();
+    if (now.getMonth() === 0 && now.getDate() === 1) {
+      console.log("January 1st - syncing holidays...");
+      await syncCurrentYear();
     } else {
-      console.log(
-        "Not January 1st - holidays will sync manually via /syncholidays"
-      );
+      console.log("Sync holidays manually via Settings → Sync Holidays");
     }
   } catch (error) {
     console.error("Startup error:", error.message);

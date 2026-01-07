@@ -5,8 +5,7 @@ A simple Telegram bot for tracking daily expenses with Myanmar holidays.
 ## Features
 
 - **Daily Expenses** - Quick expense tracking with Burmese/English
-- **Monthly Budget** - Set budget and track spending
-- **Budget Warnings** - Alerts at 80% and over budget
+- **Monthly Overview** - View spending by day
 - **Myanmar Holidays** - Sync from Calendarific API
 - **Simple Commands** - Natural language parsing
 
@@ -18,10 +17,9 @@ A simple Telegram bot for tracking daily expenses with Myanmar holidays.
 | `lunch 3000` | Add expense |
 | `ညနေစာ 5000` | Add expense (Burmese) |
 | `/today` | Today's expenses |
-| `/thismonth` | Monthly overview with budget |
+| `/thismonth` | Monthly overview |
 | `/holidays` | Myanmar holidays |
-| `/budget 300000` | Set monthly budget |
-| `/settings` | Bot settings (includes recent expenses) |
+| `/settings` | Bot settings |
 
 ## Setup
 
@@ -61,11 +59,10 @@ npm run dev
 │   ├── db.js               # MongoDB connection
 │   └── env.js              # Environment variables
 ├── models/
-│   ├── Budget.js           # Monthly budget
 │   ├── Expense.js          # Expense transactions
 │   └── Holiday.js          # Myanmar holidays
 ├── services/
-│   ├── expense.js          # Expense CRUD + budget logic
+│   ├── expense.js          # Expense CRUD
 │   └── holiday.js          # Calendarific API
 └── routes/
     └── telegram.route.js   # Webhook route

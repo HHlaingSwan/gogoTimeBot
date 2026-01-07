@@ -10,9 +10,6 @@ import {
   handleHolidays,
   handleSettings,
   handleSyncHolidays,
-  handleSetBudget,
-  handleBudgetCommand,
-  sendReplyKeyboard,
 } from "./handlers.js";
 
 export const registerCommands = () => {
@@ -38,15 +35,6 @@ export const registerCommands = () => {
 
   bot.onText(/\/settings/, (msg) => {
     handleSettings(msg.chat.id);
-  });
-
-  bot.onText(/\/budget\s*(.*)/, (msg, match) => {
-    const input = match[1].trim();
-    if (input) {
-      handleBudgetCommand(msg.chat.id, input);
-    } else {
-      handleSetBudget(msg.chat.id);
-    }
   });
 
   bot.onText(/Today/, (msg) => {
@@ -87,11 +75,13 @@ export const registerCommands = () => {
 
     if (data.startsWith("delete_")) {
       const expenseId = data.replace("delete_", "");
-      await handleDeleteExpense(chatId, expenseId, callbackQuery.message.message_id);
+      await handleDeleteExpense(
+        chatId,
+        expenseId,
+        callbackQuery.message.message_id
+      );
     } else if (data === "sync_holidays") {
       await handleSyncHolidays(chatId, callbackQuery.message.message_id);
-    } else if (data === "set_budget") {
-      await handleSetBudget(chatId, callbackQuery.message.message_id);
     } else if (data === "recent_expenses") {
       await handleRecent(chatId);
     } else if (data === "settings") {

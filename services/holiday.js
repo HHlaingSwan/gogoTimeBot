@@ -123,95 +123,6 @@ export async function syncCurrentYear() {
   return await syncYear(currentYear);
 }
 
-export async function syncCurrentAndNextYear() {
-  const currentYear = new Date().getFullYear();
-  const nextYear = currentYear + 1;
-
-  console.log(`Syncing ${currentYear} and ${nextYear}...`);
-
-  const currentResult = await syncYear(currentYear);
-  const nextResult = await syncYear(nextYear);
-
-  console.log("Sync completed");
-
-  return {
-    success: currentResult.success && nextResult.success,
-    error: currentResult.error || nextResult.error,
-    totalAdded: currentResult.holidays.length + nextResult.holidays.length,
-  };
-}
-
-export async function syncAllYears() {
-  const now = new Date();
-  const isJanuary = now.getMonth() === 0;
-  const isFirstDay = now.getDate() === 1;
-
-  if (isJanuary && isFirstDay) {
-    await syncCurrentAndNextYear();
-  } else {
-    await syncCurrentYear();
-  }
-}
-
-export function startMonthlySync(hour = 3, minute = 0) {
-  function getNextSyncTime() {
-    const now = new Date();
-    const next = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      1,
-      hour,
-      minute,
-      0,
-      0
-    );
-    return next;
-  }
-
-  function scheduleSync() {
-    const nextSync = getNextSyncTime();
-    const delay = Math.min(nextSync.getTime() - Date.now(), 2147483647);
-
-    const isJanuary = nextSync.getMonth() === 0;
-    console.log(`Next sync: ${nextSync.toLocaleDateString()}`);
-    console.log(
-      isJanuary
-        ? "Will sync current + next year"
-        : "Will sync current year only"
-    );
-
-    setTimeout(async () => {
-      try {
-        console.log("Running monthly sync...");
-        await syncAllYears();
-      } catch (error) {
-        console.error("Sync error:", error.message);
-      }
-      scheduleSync();
-    }, delay);
-  }
-
-  scheduleSync();
-  console.log("Monthly sync started");
-}
-
-export async function getUpcomingHolidays(referenceDate = new Date()) {
-  const currentYear = referenceDate.getFullYear();
-  const currentMonth = referenceDate.getMonth() + 1;
-  const currentDay = referenceDate.getDate();
-
-  const holidays = await Holiday.find({
-    year: currentYear,
-    country: "MM",
-    $or: [
-      { month: currentMonth, day: { $gte: currentDay } },
-      { month: { $gt: currentMonth } },
-    ],
-  }).sort({ month: 1, day: 1 });
-
-  return holidays;
-}
-
 export async function getAllHolidays(year) {
   const holidays = await Holiday.find({
     year: year,
@@ -219,41 +130,6 @@ export async function getAllHolidays(year) {
   }).sort({ month: 1, day: 1 });
 
   return holidays;
-}
-
-export async function getTodayHolidays(month, day) {
-  const year = new Date().getFullYear();
-
-  return await Holiday.find({
-    year: year,
-    month: month,
-    day: day,
-    country: "MM",
-  });
-}
-
-export async function getHolidaysByMonth(
-  month,
-  year = new Date().getFullYear()
-) {
-  return await Holiday.find({
-    year: year,
-    month: month,
-    country: "MM",
-  }).sort({ day: 1 });
-}
-
-export async function getHolidaysForDate(
-  month,
-  day,
-  year = new Date().getFullYear()
-) {
-  return await Holiday.find({
-    year: year,
-    month: month,
-    day: day,
-    country: "MM",
-  });
 }
 
 export async function getHolidayCount(year = new Date().getFullYear()) {
