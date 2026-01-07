@@ -8,6 +8,7 @@ async function fetchMyanmarHolidays(year) {
   if (!CALENDARIFIC_API_KEY) {
     return { success: false, error: "API key not configured", holidays: [] };
   }
+  console.log("CALENDARIFIC_API_KEY", CALENDARIFIC_API_KEY);
 
   try {
     const response = await axios.get(`${CALENDARIFIC_BASE_URL}/holidays`, {
@@ -124,11 +125,12 @@ export async function syncCurrentYear() {
 }
 
 export async function getAllHolidays(year) {
+  console.log(`Fetching holidays for year ${year} from DB...`);
   const holidays = await Holiday.find({
     year: year,
     country: "MM",
   }).sort({ month: 1, day: 1 });
-
+  console.log(`Found ${holidays.length} holidays in DB`);
   return holidays;
 }
 

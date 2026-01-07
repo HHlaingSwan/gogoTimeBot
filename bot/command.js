@@ -81,7 +81,7 @@ export const registerCommands = () => {
         callbackQuery.message.message_id
       );
     } else if (data === "sync_holidays") {
-      await handleSyncHolidays(chatId, callbackQuery.message.message_id);
+      await handleSyncHolidays(chatId, callbackQuery.message.message_id, callbackQuery.id);
     } else if (data === "recent_expenses") {
       await handleRecent(chatId);
     } else if (data === "settings") {

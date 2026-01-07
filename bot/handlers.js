@@ -12,6 +12,9 @@ import {
   getMonthExpenses,
 } from "../services/expense.js";
 
+const lastSyncTime = new Map();
+const SYNC_COOLDOWN = 60000;
+
 export function sendReplyKeyboard(chatId) {
   const keyboard = [
     [{ text: "Today" }, { text: "This Month" }],
@@ -319,7 +322,20 @@ export function handleSettings(chatId, messageId) {
   }
 }
 
-export function handleSyncHolidays(chatId, messageId) {
+export function handleSyncHolidays(chatId, messageId, callbackQueryId) {
+  const now = Date.now();
+  const lastSync = lastSyncTime.get(chatId) || 0;
+
+  if (now - lastSync < SYNC_COOLDOWN) {
+    const remaining = Math.ceil((SYNC_COOLDOWN - (now - lastSync)) / 1000);
+    bot.answerCallbackQuery(callbackQueryId);
+    bot.sendMessage(chatId, `Please wait ${remaining}s before syncing again.`);
+    return;
+  }
+
+  lastSyncTime.set(chatId, now);
+  bot.answerCallbackQuery(callbackQueryId);
+
   bot.sendMessage(chatId, "Syncing...").then((msg) => {
     handleSyncHolidaysCallback(chatId, msg.message_id);
   });
@@ -327,18 +343,26 @@ export function handleSyncHolidays(chatId, messageId) {
 
 async function handleSyncHolidaysCallback(chatId, messageId) {
   try {
-    const { CALENDARIFIC_API_KEY } = await import("../config/env.js");
     let apiStatus = "";
 
-    if (CALENDARIFIC_API_KEY) {
-      const health = await checkApiHealth();
-      apiStatus = health.healthy ? "API OK" : health.message;
+    if (process.env.CALENDARIFIC_API_KEY) {
+      try {
+        const health = await checkApiHealth();
+        apiStatus = health.healthy ? "API OK" : health.message;
+      } catch (healthError) {
+        console.error("Health check error:", healthError.message);
+        apiStatus = "API check failed";
+      }
     } else {
       apiStatus = "No API key";
     }
 
+    console.log("Starting holiday sync...");
     const result = await syncCurrentYear();
+    console.log("Sync result:", result);
+
     const total = await getHolidayCount(new Date().getFullYear());
+    console.log("Holiday count:", total);
 
     if (result.success) {
       const added = result.holidays?.length || 0;
@@ -366,7 +390,7 @@ async function handleSyncHolidaysCallback(chatId, messageId) {
     }
   } catch (error) {
     console.error("Sync error:", error);
-    bot.editMessageText("Failed. Try again.", {
+    bot.editMessageText(`Failed: ${error.message}`, {
       chat_id: chatId,
       message_id: messageId,
     });
