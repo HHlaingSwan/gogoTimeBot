@@ -13,7 +13,7 @@ import {
 } from "../services/expense.js";
 
 const lastSyncTime = new Map();
-const SYNC_COOLDOWN = 60000;
+const SYNC_COOLDOWN_MONTHLY = true;
 
 export function sendReplyKeyboard(chatId) {
   const keyboard = [
@@ -98,13 +98,12 @@ export function handleTodayExpenses(chatId) {
       response += `\nNo expenses yet\n\nEnter: breakfast 1000`;
     } else {
       response += `\n`;
+      const maxLen = Math.max(...expenses.map(e => e.category.length));
       expenses.forEach((e) => {
-        response += `${e.category.padEnd(
-          12
-        )} ${e.amount.toLocaleString()} MMK\n`;
+        response += `${e.category.padEnd(maxLen + 1)} ${e.amount.toLocaleString()}\n`;
       });
       response += `\n───────────────────\n`;
-      response += `💰 Total: ${total.toLocaleString()} MMK`;
+      response += `💰 Total: ${total.toLocaleString()}`;
     }
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
@@ -131,14 +130,14 @@ export function handleThisMonth(chatId) {
       sortedDays.slice(0, 10).forEach(([day, dayTotal]) => {
         response += `Jan ${day.padStart(2, " ")}  ${dayTotal
           .toLocaleString()
-          .padStart(8)} MMK\n`;
+          .padStart(8)}\n`;
       });
 
       if (sortedDays.length > 10) {
         response += `   ...  ${sortedDays.length - 10} more days\n`;
       }
       response += `\n───────────────────\n`;
-      response += `💰 Total: ${total.toLocaleString()} MMK`;
+      response += `💰 Total: ${total.toLocaleString()}`;
     }
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
@@ -176,7 +175,7 @@ export async function handleRecent(chatId) {
     });
     response += `${i + 1}. ${dateStr} - ${
       e.category
-    }: ${e.amount.toLocaleString()} MMK\n`;
+    }: ${e.amount.toLocaleString()}\n`;
     inlineKeyboard.push([
       { text: `${i + 1}. Delete`, callback_data: `delete_${e._id}` },
     ]);
@@ -184,7 +183,7 @@ export async function handleRecent(chatId) {
 
   response += `\nTotal: ${expenses
     .reduce((sum, e) => sum + e.amount, 0)
-    .toLocaleString()} MMK`;
+    .toLocaleString()}`;
 
   bot.sendMessage(chatId, response, {
     parse_mode: "Markdown",
@@ -197,9 +196,9 @@ export async function handleDeleteExpense(chatId, expenseId, messageId) {
 
   try {
     const deleted = await Expense.findByIdAndDelete(expenseId);
-    if (deleted) {
+      if (deleted) {
       bot.editMessageText(
-        `Deleted: ${deleted.category} - ${deleted.amount.toLocaleString()} MMK`,
+        `Deleted: ${deleted.category} - ${deleted.amount.toLocaleString()}`,
         {
           chat_id: chatId,
           message_id: messageId,
@@ -242,9 +241,9 @@ Or: lunch 3000`,
   getTodayExpenses(chatId).then(({ total }) => {
     let response = `Added
 
-${category}: ${amount.toLocaleString()} MMK
+${category}: ${amount.toLocaleString()}
 
-Today total: ${total.toLocaleString()} MMK`;
+Today total: ${total.toLocaleString()}`;
 
     bot.sendMessage(chatId, response, { parse_mode: "Markdown" });
   });
@@ -323,17 +322,17 @@ export function handleSettings(chatId, messageId) {
 }
 
 export function handleSyncHolidays(chatId, messageId, callbackQueryId) {
-  const now = Date.now();
-  const lastSync = lastSyncTime.get(chatId) || 0;
+  const now = new Date();
+  const syncKey = `${chatId}-${now.getFullYear()}-${now.getMonth()}`;
+  const lastSync = lastSyncTime.get(syncKey);
 
-  if (now - lastSync < SYNC_COOLDOWN) {
-    const remaining = Math.ceil((SYNC_COOLDOWN - (now - lastSync)) / 1000);
+  if (lastSync) {
     bot.answerCallbackQuery(callbackQueryId);
-    bot.sendMessage(chatId, `Please wait ${remaining}s before syncing again.`);
+    bot.sendMessage(chatId, "Already synced this month. Try again next month.");
     return;
   }
 
-  lastSyncTime.set(chatId, now);
+  lastSyncTime.set(syncKey, now.getTime());
   bot.answerCallbackQuery(callbackQueryId);
 
   bot.sendMessage(chatId, "Syncing...").then((msg) => {

@@ -17,7 +17,12 @@ function detectCategory(text) {
       return category.charAt(0).toUpperCase() + category.slice(1);
     }
   }
-  return "Other";
+  if (!text.trim()) return "Other";
+  return text
+    .trim()
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 export function parseExpense(input) {
@@ -36,6 +41,11 @@ export function parseExpense(input) {
   }
 
   const description = trimmed.slice(amountMatch[0].length).trim();
+
+  if (description.length > 150) {
+    return { success: false, error: "Description too long (max 150 chars)" };
+  }
+
   const category = detectCategory(description);
 
   return {

@@ -8,7 +8,6 @@ async function fetchMyanmarHolidays(year) {
   if (!CALENDARIFIC_API_KEY) {
     return { success: false, error: "API key not configured", holidays: [] };
   }
-  console.log("CALENDARIFIC_API_KEY", CALENDARIFIC_API_KEY);
 
   try {
     const response = await axios.get(`${CALENDARIFIC_BASE_URL}/holidays`, {
